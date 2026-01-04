@@ -1,48 +1,70 @@
-import pool from '../config/db.js';
+import { supabase } from '../config/supabase.js';
 
-// Data access layer - pure database operations
+// Data access layer - pure database operations using Supabase
 
 export const createUserModel = async (username, email) => {
-  const result = await pool.query(
-    'INSERT INTO users (username, email) VALUES ($1, $2) RETURNING *',
-    [username, email]
-  );
-  return result.rows[0];
+  const { data, error } = await supabase
+    .from('users')
+    .insert([{ username, email }])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
 };
 
 export const getUserByIdModel = async (id) => {
-  const result = await pool.query(
-    'SELECT * FROM users WHERE id = $1',
-    [id]
-  );
-  return result.rows[0];
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found
+  return data;
 };
 
 export const getUserByEmailModel = async (email) => {
-  const result = await pool.query(
-    'SELECT * FROM users WHERE email = $1',
-    [email]
-  );
-  return result.rows[0];
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('email', email)
+    .single();
+
+  if (error && error.code !== 'PGRST116') throw error;
+  return data;
 };
 
 export const getAllUsersModel = async () => {
-  const result = await pool.query('SELECT * FROM users');
-  return result.rows;
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return data;
 };
 
 export const updateUserModel = async (id, username, email) => {
-  const result = await pool.query(
-    'UPDATE users SET username = $1, email = $2 WHERE id = $3 RETURNING *',
-    [username, email, id]
-  );
-  return result.rows[0];
+  const { data, error } = await supabase
+    .from('users')
+    .update({ username, email })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
 };
 
 export const deleteUserModel = async (id) => {
-  const result = await pool.query(
-    'DELETE FROM users WHERE id = $1 RETURNING *',
-    [id]
-  );
-  return result.rows[0];
+  const { data, error } = await supabase
+    .from('users')
+    .delete()
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
 };
