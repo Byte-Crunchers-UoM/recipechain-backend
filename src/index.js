@@ -3,38 +3,59 @@ dotenv.config();
 
 import express from 'express';
 import cors from 'cors';
-import pool from './config/db.js';
+import { testConnection } from './config/supabase.js';
 import userRoutes from './routes/userRoutes.js';
 import errorHandler from './middleware/errorHandler.js';
-import createUserTable from './data/createUserTable.js';
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 4000;
 
 app.use(cors());
 app.use(express.json());
 
-//routes
-app.use('/api', userRoutes); 
+// Health check route
+app.get('/', (req, res) => {
+  res.json({
+    message: 'RecipeChain API',
+    version: '1.0.0',
+    status: 'running'
+  });
+});
 
-//testing postgres connection
+// Test Supabase connection
 app.get('/test-db', async (req, res) => {
   try {
-    const result = await pool.query('SELECT current_database()');
-    res.send(`Connected to database: ${result.rows[0].current_database}`);
+    const isConnected = await testConnection();
+
+    if (isConnected) {
+      res.json({
+        success: true,
+        message: 'Supabase connection is healthy',
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      throw new Error('Connection test failed');
+    }
   } catch (err) {
     console.error(err);
-    res.status(500).send('Error connecting to the database');
+    res.status(500).json({
+      success: false,
+      message: 'Error connecting to Supabase',
+      error: err.message
+    });
   }
 });
 
-//error handler (must be after all routes)
+// API routes
+app.use('/api', userRoutes);
+
+// Error handler (must be after all routes)
 app.use(errorHandler);
 
-//create tables before starting the server
-createUserTable();
+// Test Supabase connection on startup
+testConnection();
 
-//server running
+// Start server
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
