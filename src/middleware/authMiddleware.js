@@ -23,7 +23,7 @@ export const protectAdmin = async (req, res, next) => {
 
       // 3. Check user role
       const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
+        .from('users')
         .select('role')
         .eq('id', user.id)
         .single();

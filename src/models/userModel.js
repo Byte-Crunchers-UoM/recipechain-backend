@@ -4,7 +4,7 @@ import { supabase } from '../config/supabase.js';
 
 export const createUserModel = async (username, email) => {
   const { data, error } = await supabase
-    .from('profiles')
+    .from('users')
     .insert([{ username, email }])
     .select()
     .single();
@@ -15,7 +15,7 @@ export const createUserModel = async (username, email) => {
 
 export const getUserByIdModel = async (id) => {
   const { data, error } = await supabase
-    .from('profiles')
+    .from('users')
     .select('*')
     .eq('id', id)
     .single();
@@ -26,7 +26,7 @@ export const getUserByIdModel = async (id) => {
 
 export const getUserByEmailModel = async (email) => {
   const { data, error } = await supabase
-    .from('profiles')
+    .from('users')
     .select('*')
     .eq('email', email)
     .single();
@@ -37,7 +37,7 @@ export const getUserByEmailModel = async (email) => {
 
 export const getAllUsersModel = async () => {
   const { data, error } = await supabase
-    .from('profiles')
+    .from('users')
     .select('*')
     .order('created_at', { ascending: false });
 
@@ -47,7 +47,7 @@ export const getAllUsersModel = async () => {
 
 export const updateUserModel = async (id, username, email) => {
   const { data, error } = await supabase
-    .from('profiles')
+    .from('users')
     .update({ username, email })
     .eq('id', id)
     .select()
@@ -59,7 +59,7 @@ export const updateUserModel = async (id, username, email) => {
 
 export const deleteUserModel = async (id) => {
   const { data, error } = await supabase
-    .from('profiles')
+    .from('users')
     .delete()
     .eq('id', id)
     .select()

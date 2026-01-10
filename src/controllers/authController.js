@@ -18,9 +18,9 @@ export const adminLogin = async (req, res) => {
       return res.status(401).json({ message: "Email or Password wrong" });
     }
 
-    // 2. Check Role in Profiles table
+    // 2. Check Role in users table
     const { data: profileData, error: profileError } = await supabase
-      .from('profiles')
+      .from('users')
       .select('role')
       .eq('id', authData.user.id)
       .single();
