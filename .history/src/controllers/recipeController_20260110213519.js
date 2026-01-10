@@ -45,7 +45,7 @@ export const addRecipe = async (req, res, next ) => {
     res.status(201).json({
         success:true,
         message:'Recipe saved successfully' ,
-        recipe
+        recipe: data
     });
 
     }catch (error){
@@ -95,6 +95,6 @@ export const deleteRecipe = async (req, res, next)=> {
             message: 'Recipe deleted successfully'
         });
     } catch (error) {
-        next(error);
+        next
     }
-};
+}

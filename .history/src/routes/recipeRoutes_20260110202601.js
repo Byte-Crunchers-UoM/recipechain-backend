@@ -12,6 +12,7 @@ const router = express.Router();
 router.post('/recipes', addRecipe);
 
 //READ
+router.get('/recipes', getAllRecipes);
 router.get('/recipes/:id',getRecipeById);
 
 //UPDATE

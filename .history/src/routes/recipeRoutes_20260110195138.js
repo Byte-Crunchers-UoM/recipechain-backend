@@ -1,6 +1,7 @@
 import express from 'express';
 import { 
         addRecipe,
+        getAllRecipes,
         getRecipeById,
         updateRecipe,
         deleteRecipe
@@ -12,12 +13,10 @@ const router = express.Router();
 router.post('/recipes', addRecipe);
 
 //READ
-router.get('/recipes/:id',getRecipeById);
+router.get('/recipes', getAllRecipes);
+router.get('/recipes/:id',getRecipebyId);
 
 //UPDATE
-router.put('/recipes/:id', updateRecipe);
 
-//DELETE
-router.delete('/recipes/:id', deleteRecipe);
 
 export default router;

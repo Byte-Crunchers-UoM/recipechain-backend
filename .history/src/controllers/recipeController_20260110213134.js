@@ -45,7 +45,7 @@ export const addRecipe = async (req, res, next ) => {
     res.status(201).json({
         success:true,
         message:'Recipe saved successfully' ,
-        recipe
+        recipe: data
     });
 
     }catch (error){
@@ -79,22 +79,6 @@ export const updateRecipe = async (req, res, next) => {
             success:true,
             message:'recipe updated successfully',
             recipe
-        });
-    } catch (error) {
-        next(error);
+        })
     }
-};
-
-//DELETE
-export const deleteRecipe = async (req, res, next)=> {
-    try {
-        await recipeService.deleteRecipe(req.params.id);
-
-        res.status(200).json({
-            success: true,
-            message: 'Recipe deleted successfully'
-        });
-    } catch (error) {
-        next(error);
-    }
-};
+}

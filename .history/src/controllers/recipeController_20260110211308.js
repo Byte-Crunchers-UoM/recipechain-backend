@@ -1,6 +1,5 @@
 import recipeService from '../services/recipeService.js';
 
-//CREATE
 export const addRecipe = async (req, res, next ) => {
     try{
         const{
@@ -26,7 +25,10 @@ export const addRecipe = async (req, res, next ) => {
             });
         }
 
-        const recipe = await recipeService.addRecipe({
+        const { data, error } = await supabase
+        .from('recipes')
+        .insert([
+            {
                 title,
                 description,
                 category,
@@ -40,61 +42,20 @@ export const addRecipe = async (req, res, next ) => {
                 chef_note,
                 image_url,
                 status
-            });
+            }
+        ])
+        .select()
+        .single();
+
+    if (error) throw error;
 
     res.status(201).json({
         success:true,
         message:'Recipe saved successfully' ,
-        recipe
+        recipe: data
     });
 
     }catch (error){
-        next(error);
-    }
-};
-
-//READ
-export const getRecipeById =async (req, res, next)=>{
-    try{
-        const recipe = await recipeService.getRecipeById(req.params.id);
-
-        res.status(200).json({
-            success:true,
-            recipe
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
-//UPDATE
-export const updateRecipe = async (req, res, next) => {
-    try {
-        const recipe =await recipeService.updateRecipe(
-            req.params.id,
-            req.body
-        );
-
-        res.status(200).json({
-            success:true,
-            message:'recipe updated successfully',
-            recipe
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
-//DELETE
-export const deleteRecipe = async (req, res, next)=> {
-    try {
-        await recipeService.deleteRecipe(req.params.id);
-
-        res.status(200).json({
-            success: true,
-            message: 'Recipe deleted successfully'
-        });
-    } catch (error) {
         next(error);
     }
 };
