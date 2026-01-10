@@ -1,4 +1,3 @@
-import authRoutes from './routes/authRoutes.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -49,7 +48,6 @@ app.get('/test-db', async (req, res) => {
 
 // API routes
 app.use('/api', userRoutes);
-app.use('/api/auth', authRoutes);
 
 // Error handler (must be after all routes)
 app.use(errorHandler);
