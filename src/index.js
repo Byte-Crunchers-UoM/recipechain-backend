@@ -50,7 +50,7 @@ app.get('/test-db', async (req, res) => {
 
 // API routes
 app.use('/api', userRoutes);
-app.use('/api', recipeRoutes);
+app.use('/api/recipes', recipeRoutes);
 app.use('/api/auth', authRoutes);
 
 // Error handler (must be after all routes)

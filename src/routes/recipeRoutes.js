@@ -9,15 +9,15 @@ import {
 const router = express.Router();
 
 //CREATE
-router.post('/recipes', addRecipe);
+router.post('/', addRecipe);
 
 //READ
-router.get('/recipes/:id',getRecipeById);
+router.get('/:id',getRecipeById);
 
 //UPDATE
-router.put('/recipes/:id', updateRecipe);
+router.put('/:id', updateRecipe);
 
 //DELETE
-router.delete('/recipes/:id', deleteRecipe);
+router.delete('/:id', deleteRecipe);
 
 export default router;
