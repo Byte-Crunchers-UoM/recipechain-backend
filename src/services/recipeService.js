@@ -1,6 +1,30 @@
-import { getAllRecipesModel,getRecipesByTagModel } from "../models/recipesModel.js";
+import {
+  addRecipeModel,
+  getRecipeByIdModel,
+  updateRecipeModel,
+  deleteRecipeModel,
+  getAllRecipesModel,
+  getRecipesByTagModel
+} from "../models/recipesModel.js";
+
 class RecipeService {
-    async getAllRecipes(){
+
+  async addRecipe(recipeData) {
+    return await addRecipeModel(recipeData);
+  }
+
+  async getRecipeById(id) {
+    return await getRecipeByIdModel(id);
+  }
+
+  async updateRecipe(id, updateData) {
+    return await updateRecipeModel(id, updateData);
+  }
+
+  async deleteRecipe(id) {
+    return await deleteRecipeModel(id);
+  }
+  async getAllRecipes(){
         const recipes = await getAllRecipesModel();
         return recipes;
     }
@@ -20,4 +44,5 @@ class RecipeService {
     }
 
 }
+
 export default new RecipeService();
