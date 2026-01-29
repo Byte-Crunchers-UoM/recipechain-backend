@@ -3,6 +3,6 @@ import { getAllRecipes, getRecipesByTag, } from '../controllers/recipeController
 const router = express.Router();
 
 router.get("/recipes",getAllRecipes);
-router.get("/recipes/tag/:tag",getRecipesByTag);
+router.get("/recipes/filter",getRecipesByTag);
 
 export default router;

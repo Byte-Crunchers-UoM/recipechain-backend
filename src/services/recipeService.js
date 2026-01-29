@@ -4,9 +4,18 @@ class RecipeService {
         const recipes = await getAllRecipesModel();
         return recipes;
     }
-    async getRecipesByTag(tag){
-        const recipes = await getRecipesByTagModel(tag);
-        return recipes;
+    async getRecipesByTag(tagsArray){
+        const recipes = await getRecipesByTagModel(tagsArray);
+        const flattenedRecipes = recipes.map(recipe=>{
+            return{
+                id:recipe.id,
+                title:recipe.title,
+                description:recipe.description,
+                price:recipe.price,
+                tags:recipe.recipe_tags.map(item => item.tags.name)
+            }
+        })
+        return flattenedRecipes;
 
     }
 

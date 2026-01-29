@@ -19,8 +19,11 @@ export const getAllRecipes = async(req, res, next)=>{
 }
 export const getRecipesByTag = async(req,res,next)=>{
     try{
-        const {tag} = req.params;
-        const recipes = await recipeService.getRecipesByTag(tag);
+        const {tags} = req.query;
+
+        const tagsArray = tags ? tags.split(',') : [];
+
+        const recipes = await recipeService.getRecipesByTag(tagsArray);
         if(!recipes){
             return sendResponse(res,404,'recipes not found');
         }
