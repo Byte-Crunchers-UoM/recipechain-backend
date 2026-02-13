@@ -19,6 +19,9 @@ export const getFilteredRecipes = async (req, res, next)=>{
             occassion:req.query.occassion
         };
             const recipes = await recipeService.getFilteredrecipes(filters);
+            if( !recipes || recipes.length===0){
+                return sendResponse(res, 200, true, 'No recipes found matching your filters',[]);
+            }
             return sendResponse(res,200,true,'filtered recipes retrieved successfully',recipes);
     }
     catch(err){
