@@ -9,25 +9,27 @@ const sendResponse = (res, statusCode,success,message,data = null)=>{
 
 }
 
+export const getFilteredRecipes = async (req, res, next)=>{
+    try{
+        const filters = {
+            goal: req.query.goal,
+            dietary: req.query.dietary,
+            cuisine: req.query.cuisine,
+            meal: req.query.meal,
+            occassion:req.query.occassion
+        };
+            const recipes = await recipeService.getFilteredrecipes(filters);
+            return sendResponse(res,200,true,'filtered recipes retrieved successfully',recipes);
+    }
+    catch(err){
+        next(err);
+    }
+}
+
 export const getAllRecipes = async(req, res, next)=>{
     try{
     const recipes = await recipeService.getAllRecipes();
     return sendResponse(res, 200,true, 'recipes retrieved successfully',recipes);
-    }catch(err){
-        next(err);
-    }
-}
-export const getRecipesByTag = async(req,res,next)=>{
-    try{
-        const {tags} = req.query;
-
-        const tagsArray = tags ? tags.split(',') : [];
-
-        const recipes = await recipeService.getRecipesByTag(tagsArray);
-        if(!recipes){
-            return sendResponse(res,404,'recipes not found');
-        }
-        return sendResponse(res,200,true,'recipes retrieved successfilly',recipes);
     }catch(err){
         next(err);
     }

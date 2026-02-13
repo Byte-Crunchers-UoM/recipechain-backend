@@ -4,7 +4,7 @@ import {
   updateRecipeModel,
   deleteRecipeModel,
   getAllRecipesModel,
-  getRecipesByTagModel
+  getFilteredRecipesModel
 } from "../models/recipesModel.js";
 
 class RecipeService {
@@ -28,21 +28,10 @@ class RecipeService {
         const recipes = await getAllRecipesModel();
         return recipes;
     }
-    async getRecipesByTag(tagsArray){
-        const recipes = await getRecipesByTagModel(tagsArray);
-        const flattenedRecipes = recipes.map(recipe=>{
-            return{
-                id:recipe.id,
-                title:recipe.title,
-                description:recipe.description,
-                price:recipe.price,
-                tags:recipe.recipe_tags.map(item => item.tags.name)
-            }
-        })
-        return flattenedRecipes;
-
-    }
-
+  async getFilteredrecipes(filters){
+    const recipes = await getFilteredRecipesModel(filters);
+    return recipes;
+  }
 }
 
 export default new RecipeService();

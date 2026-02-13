@@ -1,17 +1,18 @@
 import express from 'express'
 import { getAllRecipes,
-        getRecipesByTag,
         addRecipe,
         getRecipeById,
         updateRecipe,
-        deleteRecipe
+        deleteRecipe,
+        getFilteredRecipes
  } from '../controllers/recipeController.js';
 
 
 const router = express.Router();
 
 router.get("/",getAllRecipes);
-router.get("/filter",getRecipesByTag);
+
+router.get("/filter",getFilteredRecipes)
 
 
 //CREATE

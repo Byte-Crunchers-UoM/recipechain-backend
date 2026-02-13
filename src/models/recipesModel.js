@@ -1,5 +1,6 @@
 import { supabase } from "../config/supabase.js";
 
+//Get All Recipes
 export const getAllRecipesModel = async()=>{
     const{ data,error } = await supabase
     .from ('recipes')
@@ -9,32 +10,33 @@ export const getAllRecipesModel = async()=>{
     return data;
 };
 
+//Filter Recipes
+export const getFilteredRecipesModel = async (filters)=>{
+  const {goal, dietary, cuisine, meal, occassion} = filters;
+  let query = supabase
+  .from('recipes')
+  .select(`recipe_id,
+    title,
+    description,
+    price,
+    image_url,
+    rating_avg,
+    tags:tag_id!inner(*)
+    `)
+  .eq('status','published');
 
-export const getRecipesByTagModel =async(tagsArray)=>{
-    const requiredTagCount = tagsArray.length;
-    const{data,error} = await supabase
-    .from('recipes')
-    .select(`
-            recipe_id,
-            title,
-            description,
-            price,
-            recipe_tags!inner(tags!inner(name))
-            `)
-    
-    .in('recipe_tags.tags.name', tagsArray)
-    .eq('status','published')
-    .order('created_at', {ascending:false});
-        
-    if(error) throw error
-    const filteredData = data.filter(recipe=>{
-        const matchingTagsCount = recipe.recipe_tags.length;
-        return matchingTagsCount === requiredTagCount;
-    })
+  if (goal) query = query.eq('tags.goal',goal);
+  if (dietary) query = query.eq('tags.dietary_tags', dietary);
+  if (cuisine) query = query.eq('tags.cuisine', cuisine);
+  if (meal) query = query.eq('tags.meal_type',meal);
+  if (occassion) query =query.eq('tags.occassion',occassion);
+  const { data,error } = await query.order('created_at',{ascending:'false'});
 
-        
-    return filteredData;
-}
+  if (error) throw error;
+
+  return data;
+};
+
 //CREATE
 export const addRecipeModel = async (recipeData) =>{
     const {data,error} = await supabase
