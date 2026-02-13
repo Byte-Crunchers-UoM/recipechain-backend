@@ -54,7 +54,7 @@ export const getRecipeByIdModel = async (id) => {
     const {data,error} = await supabase
     .from("recipes")
     .select("*")
-    .eq("id",id)
+    .eq("recipe_id",id)
     .single();
 
     if(error) throw error;
