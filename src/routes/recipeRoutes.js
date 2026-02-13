@@ -1,12 +1,19 @@
-import express from 'express';
-import { 
+import express from 'express'
+import { getAllRecipes,
         addRecipe,
         getRecipeById,
         updateRecipe,
-        deleteRecipe
+        deleteRecipe,
+        getFilteredRecipes
  } from '../controllers/recipeController.js';
 
+
 const router = express.Router();
+
+router.get("/",getAllRecipes);
+
+router.get("/filter",getFilteredRecipes)
+
 
 //CREATE
 router.post('/', addRecipe);

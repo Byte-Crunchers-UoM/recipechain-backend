@@ -1,4 +1,42 @@
-import recipeService from '../services/recipeService.js';
+import recipeService from "../services/recipeService.js";
+
+const sendResponse = (res, statusCode,success,message,data = null)=>{
+    res.status(statusCode).json({
+        success,
+        message,
+        data
+    })
+
+}
+
+export const getFilteredRecipes = async (req, res, next)=>{
+    try{
+        const filters = {
+            goal: req.query.goal,
+            dietary: req.query.dietary,
+            cuisine: req.query.cuisine,
+            meal: req.query.meal,
+            occassion:req.query.occassion
+        };
+            const recipes = await recipeService.getFilteredrecipes(filters);
+            if( !recipes || recipes.length===0){
+                return sendResponse(res, 200, true, 'No recipes found matching your filters',[]);
+            }
+            return sendResponse(res,200,true,'filtered recipes retrieved successfully',recipes);
+    }
+    catch(err){
+        next(err);
+    }
+}
+
+export const getAllRecipes = async(req, res, next)=>{
+    try{
+    const recipes = await recipeService.getAllRecipes();
+    return sendResponse(res, 200,true, 'recipes retrieved successfully',recipes);
+    }catch(err){
+        next(err);
+    }
+}
 
 //CREATE
 export const addRecipe = async (req, res, next ) => {
