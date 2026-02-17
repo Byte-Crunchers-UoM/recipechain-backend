@@ -1,27 +1,27 @@
 import { supabase } from "../config/supabase.js"
 
 //CREATE
-export const addRecipeModel = async (recipeData) =>{
-    const {data,error} = await supabase
+export const addRecipeModel = async (recipeData) => {
+  const { data, error } = await supabase
     .from("recipes")
     .insert([recipeData])
     .select()
     .single();
 
-    if (error) throw error;
-    return data;
+  if (error) throw error;
+  return data;
 };
 
 //READ BY ID
 export const getRecipeByIdModel = async (id) => {
-    const {data,error} = await supabase
+  const { data, error } = await supabase
     .from("recipes")
     .select("*")
-    .eq("id",id)
+    .eq("id", id)
     .single();
 
-    if(error) throw error;
-    return data;
+  if (error) throw error;
+  return data;
 };
 
 // UPDATE
@@ -46,4 +46,14 @@ export const deleteRecipeModel = async (id) => {
 
   if (error) throw error;
   return true;
+};
+
+// READ ALL (for trending calculation)
+export const getAllRecipesModel = async () => {
+  const { data, error } = await supabase
+    .from("recipes")
+    .select("*"); // Select all fields to calculate trending score locally
+
+  if (error) throw error;
+  return data;
 };

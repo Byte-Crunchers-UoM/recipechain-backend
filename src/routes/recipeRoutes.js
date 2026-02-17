@@ -1,18 +1,23 @@
 import express from 'express';
-import { 
+import {
         addRecipe,
         getRecipeById,
         updateRecipe,
-        deleteRecipe
- } from '../controllers/recipeController.js';
+        deleteRecipe,
+        getTrendingRecipes
+} from '../controllers/recipeController.js';
 
 const router = express.Router();
 
 //CREATE
+//CREATE
 router.post('/', addRecipe);
 
+// TRENDING (Must be before /:id)
+router.get('/trending', getTrendingRecipes);
+
 //READ
-router.get('/:id',getRecipeById);
+router.get('/:id', getRecipeById);
 
 //UPDATE
 router.put('/:id', updateRecipe);
