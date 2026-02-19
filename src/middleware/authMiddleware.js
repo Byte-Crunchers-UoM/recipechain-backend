@@ -14,25 +14,26 @@ export const protectAdmin = async (req, res, next) => {
       // "separate token from Bearer <token>" 
       token = req.headers.authorization.split(' ')[1];
 
-      // 2.Token  Verify by supabase
+      // 2. Token Verify by supabase
       const { data: { user }, error } = await supabase.auth.getUser(token);
 
       if (error || !user) {
         return res.status(401).json({ message: "(Not Authorized)" });
       }
 
-      // 3. Check user role
+      // 3. Check user role in the 'admins' table
+      // Changed from 'users' to 'admins' and 'id' to 'admin_id'
       const { data: profileData, error: profileError } = await supabase
-        .from('users')
+        .from('admins') 
         .select('role')
-        .eq('id', user.id)
+        .eq('admin_id', user.id) 
         .single();
 
       if (profileError || !profileData || profileData.role !== 'admin') {
         return res.status(403).json({ message: " (Admin Only)" });
       }
 
-      // 4. is all correct,add  User details to req 
+      // 4. is all correct, add User details to req 
       req.user = user;
       req.adminRole = profileData.role;
       next();
