@@ -1,4 +1,3 @@
-// src/controllers/userController.js
 import userService from '../services/userService.js';
 
 // Standardized response function - Great job setting this up!

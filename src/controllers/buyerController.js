@@ -1,4 +1,3 @@
-// src/controllers/buyerController.js
 import { supabase } from '../config/supabase.js';
 import crypto from 'crypto'; 
 
@@ -12,7 +11,6 @@ export const createBuyer = async (req, res) => {
     const { error: userError } = await supabase.from('users').insert([{ 
       user_id: testUserId, 
       email: email, 
-      // REMOVED 'password' from here too!
       wallet_address: wallet_address, 
       role: 'buyer' 
     }]);
@@ -43,7 +41,7 @@ export const createBuyer = async (req, res) => {
 // 2. READ: Get all buyers (Two-Step Fetch)
 export const getAllBuyers = async (req, res) => {
   try {
-    // Step A: Get all buyers including the new account_balance column
+    // Step A: Get all buyers 
     const { data: buyers, error: buyerError } = await supabase
         .from('buyers')
         .select('user_id, display_name, total_purchases, total_spent_xrp, bio, profile_picture, account_balance');

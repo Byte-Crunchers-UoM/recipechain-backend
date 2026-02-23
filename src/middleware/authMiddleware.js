@@ -1,5 +1,3 @@
-// src/middleware/authMiddleware.js
-
 import { supabase } from '../config/supabase.js';
 
 export const protectAdmin = async (req, res, next) => {
@@ -22,7 +20,6 @@ export const protectAdmin = async (req, res, next) => {
       }
 
       // 3. Check user role in the parent 'users' table
-      // We look at 'users' instead of 'admins' to find the 'role' column
       const { data: userData, error: userError } = await supabase
         .from('users') 
         .select('role')
