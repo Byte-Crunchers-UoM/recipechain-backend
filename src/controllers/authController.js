@@ -1,5 +1,3 @@
-// src/controllers/authController.js
-
 import { supabase } from '../config/supabase.js';
 
 export const adminLogin = async (req, res) => {
@@ -18,31 +16,42 @@ export const adminLogin = async (req, res) => {
       return res.status(401).json({ message: "Email or Password wrong" });
     }
 
-    // 2. Check Role in the 'admins' table instead of 'users'
-    // We use 'admin_id' because that is what you named your column in the admins table.
-    const { data: profileData, error: profileError } = await supabase
-      .from('admins') // Changed from 'users'
+    const userId = authData.user.id;
+
+    // 2. Check the parent 'users' table to confirm the 'admin' role
+    const { data: userData, error: userError } = await supabase
+      .from('users')
       .select('role')
-      .eq('admin_id', authData.user.id) // Changed 'id' to 'admin_id'
+      .eq('user_id', userId)
       .single();
 
-    if (profileError || !profileData) {
-      return res.status(500).json({ message: "Admin profile data not found" });
-    }
-
-    // 3. Admin Check
-    if (profileData.role !== 'admin') {
+    if (userError || !userData || userData.role !== 'admin') {
       return res.status(403).json({ message: "You are not an Admin" });
     }
 
-    // 4. Success Response
+    // 3. Check the child 'admins' table to fetch the username
+    const { data: profileData, error: profileError } = await supabase
+      .from('admins') 
+      .select('username') 
+      .eq('admin_id', userId) 
+      .single();
+
+    if (profileError || !profileData) {
+      return res.status(500).json({ 
+          message: "Admin profile data not found", 
+          supabaseError: profileError.message 
+      });
+    }
+
+    // 4. Success Response combining data from both tables
     return res.status(200).json({
       message: "Admin Login successful!",
       token: authData.session.access_token,
       user: {
-        id: authData.user.id,
+        id: userId,
         email: authData.user.email,
-        role: profileData.role
+        username: profileData.username, 
+        role: userData.role             
       }
     });
 

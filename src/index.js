@@ -6,6 +6,7 @@ import express from 'express';
 import cors from 'cors';
 import { testConnection } from './config/supabase.js';
 import userRoutes from './routes/userRoutes.js';
+import buyerRoutes from './routes/buyerRoutes.js';
 import errorHandler from './middleware/errorHandler.js';
 
 const app = express();
@@ -50,6 +51,7 @@ app.get('/test-db', async (req, res) => {
 // API routes
 app.use('/api', userRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api', buyerRoutes);
 
 // Error handler (must be after all routes)
 app.use(errorHandler);

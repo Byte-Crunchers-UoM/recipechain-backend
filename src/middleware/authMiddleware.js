@@ -21,22 +21,23 @@ export const protectAdmin = async (req, res, next) => {
         return res.status(401).json({ message: "(Not Authorized)" });
       }
 
-      // 3. Check user role in the 'admins' table
-      // Changed from 'users' to 'admins' and 'id' to 'admin_id'
-      const { data: profileData, error: profileError } = await supabase
-        .from('admins') 
+      // 3. Check user role in the parent 'users' table
+      // We look at 'users' instead of 'admins' to find the 'role' column
+      const { data: userData, error: userError } = await supabase
+        .from('users') 
         .select('role')
-        .eq('admin_id', user.id) 
+        .eq('user_id', user.id) 
         .single();
 
-      if (profileError || !profileData || profileData.role !== 'admin') {
+      // If there is an error, no data, or the role is not 'admin', kick them out
+      if (userError || !userData || userData.role !== 'admin') {
         return res.status(403).json({ message: " (Admin Only)" });
       }
 
       // 4. is all correct, add User details to req 
       req.user = user;
-      req.adminRole = profileData.role;
-      next();
+      req.adminRole = userData.role;
+      next(); // This is the VIP pass that lets them through to the dashboard!
 
     } catch (error) {
       console.error("Middleware Error:", error);
