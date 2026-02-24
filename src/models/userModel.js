@@ -1,10 +1,19 @@
-import { supabase } from '../config/supabase.js';
+import { supabase, supabaseAdmin } from "../config/supabase.js";
 
-// Data access layer - pure database operations using Supabase
+/*
+  Data access layer - pure database operations using Supabase
+  ------------------------------------------------------------
+  - supabase          -> normal anon client (existing CRUD)
+  - supabaseAdmin     -> service role client (secure backend operations)
+*/
+
+// =====================================================
+// EXISTING CRUD (Friend's Code) - UNCHANGED (user_id)
+// =====================================================
 
 export const createUserModel = async (username, email) => {
   const { data, error } = await supabase
-    .from('users')
+    .from("users")
     .insert([{ username, email }])
     .select()
     .single();
@@ -15,41 +24,41 @@ export const createUserModel = async (username, email) => {
 
 export const getUserByIdModel = async (id) => {
   const { data, error } = await supabase
-    .from('users')
-    .select('*')
-    .eq('id', id)
+    .from("users")
+    .select("*")
+    .eq("user_id", id)
     .single();
 
-  if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found
+  if (error && error.code !== "PGRST116") throw error;
   return data;
 };
 
 export const getUserByEmailModel = async (email) => {
   const { data, error } = await supabase
-    .from('users')
-    .select('*')
-    .eq('email', email)
+    .from("users")
+    .select("*")
+    .eq("email", email)
     .single();
 
-  if (error && error.code !== 'PGRST116') throw error;
+  if (error && error.code !== "PGRST116") throw error;
   return data;
 };
 
 export const getAllUsersModel = async () => {
   const { data, error } = await supabase
-    .from('users')
-    .select('*')
-    .order('created_at', { ascending: false });
-    
+    .from("users")
+    .select("*")
+    .order("created_at", { ascending: false });
+
   if (error) throw error;
   return data;
 };
 
 export const updateUserModel = async (id, username, email) => {
   const { data, error } = await supabase
-    .from('users')
+    .from("users")
     .update({ username, email })
-    .eq('id', id)
+    .eq("user_id", id)
     .select()
     .single();
 
@@ -59,12 +68,155 @@ export const updateUserModel = async (id, username, email) => {
 
 export const deleteUserModel = async (id) => {
   const { data, error } = await supabase
-    .from('users')
+    .from("users")
     .delete()
-    .eq('id', id)
+    .eq("user_id", id)
     .select()
     .single();
 
   if (error) throw error;
   return data;
+};
+
+// =====================================================
+// NEW: Web3Auth + XRPL Integration
+// =====================================================
+
+export const upsertWeb3AuthUserModel = async (email, walletAddress) => {
+  if (!supabaseAdmin) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY missing in backend .env");
+  }
+
+  const { data: existingUser, error: findError } = await supabaseAdmin
+    .from("users")
+    .select("*")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (findError) throw findError;
+
+  // New user
+  if (!existingUser) {
+    const { data: newUser, error: insertError } = await supabaseAdmin
+      .from("users")
+      .insert({
+        email,
+        wallet_address: walletAddress,
+      })
+      .select("*")
+      .single();
+
+    if (insertError) throw insertError;
+    return newUser;
+  }
+
+  // Wallet mismatch
+  if (
+    existingUser.wallet_address &&
+    existingUser.wallet_address !== walletAddress
+  ) {
+    throw new Error("Wallet mismatch. Login denied.");
+  }
+
+  // Store wallet if missing
+  if (!existingUser.wallet_address) {
+    const { data: updatedUser, error: updateError } = await supabaseAdmin
+      .from("users")
+      .update({ wallet_address: walletAddress })
+      .eq("user_id", existingUser.user_id)
+      .select("*")
+      .single();
+
+    if (updateError) throw updateError;
+    return updatedUser;
+  }
+
+  return existingUser;
+};
+
+// =====================================================
+// Role Handling
+// =====================================================
+
+export const setUserRoleModel = async (email, role) => {
+  if (!supabaseAdmin) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY missing in backend .env");
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("users")
+    .update({ role })
+    .eq("email", email)
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+// ✅ BEST WAY (Session-based role update)
+export const setUserRoleByUserIdModel = async (userId, role) => {
+  if (!supabaseAdmin) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY missing in backend .env");
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("users")
+    .update({ role })
+    .eq("user_id", userId)
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+// =====================================================
+// Session-based Fetch
+// =====================================================
+
+export const getUserByUserIdModel = async (userId) => {
+  if (!supabaseAdmin) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY missing in backend .env");
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("users")
+    .select("*")
+    .eq("user_id", userId)
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+// =====================================================
+// Buyer Table Handling
+// =====================================================
+
+export const ensureBuyerRowModel = async (userId, displayNameEmail) => {
+  if (!supabaseAdmin) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY missing in backend .env");
+  }
+
+  const { data: existingBuyer, error: findError } = await supabaseAdmin
+    .from("buyers")
+    .select("user_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (findError) throw findError;
+
+  if (!existingBuyer) {
+    const { error: insertError } = await supabaseAdmin
+      .from("buyers")
+      .insert({
+        user_id: userId,
+        display_name: displayNameEmail,
+      });
+
+    if (insertError) throw insertError;
+  }
+
+  return true;
 };
