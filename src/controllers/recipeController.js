@@ -9,22 +9,25 @@ const sendResponse = (res, statusCode,success,message,data = null)=>{
 
 }
 
-export const getFilteredRecipes = async (req, res, next)=>{
-    try{
-        const filters = {
-            goal: req.query.goal,
-            dietary: req.query.dietary,
-            cuisine: req.query.cuisine,
-            meal: req.query.meal,
-            occassion:req.query.occassion
-        };
-            const recipes = await recipeService.getFilteredrecipes(filters);
-            if( !recipes || recipes.length===0){
-                return sendResponse(res, 200, true, 'No recipes found matching your filters',[]);
-            }
-            return sendResponse(res,200,true,'filtered recipes retrieved successfully',recipes);
-    }
-    catch(err){
+export const getFilteredRecipes = async (req, res, next) => {
+    try {
+        const filters = {};
+        
+        if (req.query.goal) filters.goal = req.query.goal;
+        if (req.query.dietary) filters.dietary = req.query.dietary;
+        if (req.query.cuisine) filters.cuisine = req.query.cuisine;
+        if (req.query.meal_type) filters.meal_type = req.query.meal_type;
+        if (req.query.occasion) filters.occasion = req.query.occasion; 
+
+        console.log("Filters reaching the backend:", filters); 
+        const recipes = await recipeService.getFilteredrecipes(filters);
+        
+        if (!recipes || recipes.length === 0) {
+            return sendResponse(res, 200, true, 'No recipes found matching your filters', []);
+        }
+        
+        return sendResponse(res, 200, true, 'Filtered recipes retrieved successfully', recipes);
+    } catch (err) {
         next(err);
     }
 }
