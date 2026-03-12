@@ -1,0 +1,47 @@
+import sellerService from "../services/sellerService.js";
+
+const submitKyc = async (req, res, next) => {
+  try {
+    const userId = req.session?.user_id;
+
+    if (!userId) {
+      return res.status(401).json({ message: "No session user_id found" });
+    }
+
+    const result = await sellerService.submitKyc({
+      userId,
+      body: req.body,
+      file: req.file,
+    });
+
+    return res.status(200).json({
+      message: "KYC submitted successfully",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getKycStatus = async (req, res, next) => {
+  try {
+    const userId = req.session?.user_id;
+
+    if (!userId) {
+      return res.status(401).json({ message: "No session user_id found" });
+    }
+
+    const status = await sellerService.getKycStatus(userId);
+
+    return res.status(200).json({
+      data: status,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export default {
+  submitKyc,
+  getKycStatus,
+};

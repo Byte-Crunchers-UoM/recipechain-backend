@@ -1,29 +1,19 @@
-// src/services/userService.js
-
 import {
-  // ===== Existing CRUD (friend)
   createUserModel,
   getUserByIdModel,
   getUserByEmailModel,
   getAllUsersModel,
   updateUserModel,
   deleteUserModel,
-
-  // ===== Web3Auth + XRPL
   upsertWeb3AuthUserModel,
   setUserRoleModel,
   ensureBuyerRowModel,
-
-  // ===== BEST WAY (session-cookie flow)
+  ensureSellerRowModel,
   getUserByUserIdModel,
   setUserRoleByUserIdModel,
 } from "../models/userModel.js";
 
 class UserService {
-  // =========================
-  // Helpers
-  // =========================
-
   isValidEmail(email) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
@@ -32,10 +22,6 @@ class UserService {
   isValidUsername(username) {
     return username && username.trim().length >= 3;
   }
-
-  // =========================
-  // Existing CRUD (Friend)
-  // =========================
 
   async createUser(username, email) {
     if (!this.isValidUsername(username)) {
@@ -81,10 +67,7 @@ class UserService {
     if (!existingUser) return null;
 
     const userWithEmail = await getUserByEmailModel(email.toLowerCase());
-    if (
-      userWithEmail &&
-      userWithEmail.user_id !== id
-    ) {
+    if (userWithEmail && userWithEmail.user_id !== id) {
       throw new Error("Email is already taken by another user");
     }
 
@@ -101,10 +84,6 @@ class UserService {
     return { message: "User deleted successfully" };
   }
 
-  // =========================
-  // Web3Auth + XRPL (idToken flow)
-  // =========================
-
   async syncWeb3AuthUser(email, walletAddress) {
     if (!email) {
       throw new Error(
@@ -120,16 +99,9 @@ class UserService {
       throw new Error("walletAddress is required");
     }
 
-    return await upsertWeb3AuthUserModel(
-      email.toLowerCase(),
-      walletAddress
-    );
+    return await upsertWeb3AuthUserModel(email.toLowerCase(), walletAddress);
   }
 
-  /**
-   * ⚠️ Legacy token-based role setter
-   * (Used only if you still support idToken-based /users/role)
-   */
   async setUserRole(email, role) {
     if (!email) throw new Error("Email missing in session/token");
     if (!this.isValidEmail(email)) throw new Error("Invalid email format");
@@ -141,30 +113,21 @@ class UserService {
     const updatedUser = await setUserRoleModel(email.toLowerCase(), role);
 
     if (role === "buyer") {
-      await ensureBuyerRowModel(
-        updatedUser.user_id,
-        email.toLowerCase()
-      );
+      await ensureBuyerRowModel(updatedUser.user_id, email.toLowerCase());
+    }
+
+    if (role === "seller") {
+      await ensureSellerRowModel(updatedUser.user_id);
     }
 
     return updatedUser;
   }
 
-  // =========================
-  // ✅ BEST WAY (Session-cookie flow)
-  // =========================
-
-  /**
-   * Used by: GET /api/me
-   */
   async getUserByUserId(userId) {
     if (!userId) throw new Error("Missing user_id in session");
     return await getUserByUserIdModel(userId);
   }
 
-  /**
-   * Used by: POST /api/users/role (requireSession)
-   */
   async setUserRoleByUserId(userId, email, role) {
     if (!userId) throw new Error("Missing user_id in session");
     if (!email) throw new Error("Missing email in session");
@@ -176,10 +139,11 @@ class UserService {
     const updatedUser = await setUserRoleByUserIdModel(userId, role);
 
     if (role === "buyer") {
-      await ensureBuyerRowModel(
-        updatedUser.user_id,
-        email.toLowerCase()
-      );
+      await ensureBuyerRowModel(updatedUser.user_id, email.toLowerCase());
+    }
+
+    if (role === "seller") {
+      await ensureSellerRowModel(updatedUser.user_id);
     }
 
     return updatedUser;

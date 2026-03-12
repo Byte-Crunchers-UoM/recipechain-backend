@@ -4,7 +4,6 @@ const sendResponse = (res, statusCode, success, message, data = null) => {
   res.status(statusCode).json({ success, message, data });
 };
 
-// Keep your CRUD exports so userRoutes won't crash
 export const createUser = async (req, res, next) => {
   try {
     const { username, email } = req.body;
@@ -57,14 +56,12 @@ export const deleteUser = async (req, res, next) => {
   }
 };
 
-/**
- * GET /api/me
- * Middleware: requireSession
- */
 export const getMe = async (req, res) => {
   try {
     const userId = req.session?.user_id;
-    if (!userId) return sendResponse(res, 401, false, "No session user_id found");
+    if (!userId) {
+      return sendResponse(res, 401, false, "No session user_id found");
+    }
 
     const user = await userService.getUserByUserId(userId);
     return sendResponse(res, 200, true, "User loaded successfully", user);
@@ -74,10 +71,6 @@ export const getMe = async (req, res) => {
   }
 };
 
-/**
- * POST /api/users/role
- * Middleware: requireSession
- */
 export const setUserRole = async (req, res) => {
   try {
     const userId = req.session?.user_id;
@@ -85,11 +78,27 @@ export const setUserRole = async (req, res) => {
     const { role } = req.body;
 
     if (!userId || !email) {
-      return sendResponse(res, 401, false, "Missing session. Please login again.");
+      return sendResponse(
+        res,
+        401,
+        false,
+        "Missing session. Please login again."
+      );
     }
 
-    const updatedUser = await userService.setUserRoleByUserId(userId, email, role);
-    return sendResponse(res, 200, true, "User role updated successfully", updatedUser);
+    const updatedUser = await userService.setUserRoleByUserId(
+      userId,
+      email,
+      role
+    );
+
+    return sendResponse(
+      res,
+      200,
+      true,
+      "User role updated successfully",
+      updatedUser
+    );
   } catch (e) {
     console.error("setUserRole error:", e);
     return sendResponse(res, 400, false, e?.message || "Role update failed");

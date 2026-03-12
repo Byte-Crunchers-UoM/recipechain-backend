@@ -6,9 +6,12 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 
 import { testConnection } from "./config/supabase.js";
+
 import userRoutes from "./routes/userRoutes.js";
 import recipeRoutes from "./routes/recipeRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
+import sellerRoutes from "./routes/sellerRoutes.js"; // ✅ NEW
+
 import errorHandler from "./middleware/errorHandler.js";
 
 const app = express();
@@ -44,6 +47,7 @@ app.get("/test-db", async (req, res) => {
 app.use("/api", userRoutes);
 app.use("/api/recipes", recipeRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/sellers", sellerRoutes); // ✅ NEW (Seller KYC routes)
 
 // Error handler
 app.use(errorHandler);

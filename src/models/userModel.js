@@ -95,7 +95,6 @@ export const upsertWeb3AuthUserModel = async (email, walletAddress) => {
 
   if (findError) throw findError;
 
-  // New user
   if (!existingUser) {
     const { data: newUser, error: insertError } = await supabaseAdmin
       .from("users")
@@ -110,7 +109,6 @@ export const upsertWeb3AuthUserModel = async (email, walletAddress) => {
     return newUser;
   }
 
-  // Wallet mismatch
   if (
     existingUser.wallet_address &&
     existingUser.wallet_address !== walletAddress
@@ -118,7 +116,6 @@ export const upsertWeb3AuthUserModel = async (email, walletAddress) => {
     throw new Error("Wallet mismatch. Login denied.");
   }
 
-  // Store wallet if missing
   if (!existingUser.wallet_address) {
     const { data: updatedUser, error: updateError } = await supabaseAdmin
       .from("users")
@@ -154,7 +151,6 @@ export const setUserRoleModel = async (email, role) => {
   return data;
 };
 
-// ✅ BEST WAY (Session-based role update)
 export const setUserRoleByUserIdModel = async (userId, role) => {
   if (!supabaseAdmin) {
     throw new Error("SUPABASE_SERVICE_ROLE_KEY missing in backend .env");
@@ -213,6 +209,40 @@ export const ensureBuyerRowModel = async (userId, displayNameEmail) => {
       .insert({
         user_id: userId,
         display_name: displayNameEmail,
+      });
+
+    if (insertError) throw insertError;
+  }
+
+  return true;
+};
+
+// =====================================================
+// Seller Table Handling
+// =====================================================
+
+export const ensureSellerRowModel = async (userId) => {
+  if (!supabaseAdmin) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY missing in backend .env");
+  }
+
+  const { data: existingSeller, error: findError } = await supabaseAdmin
+    .from("sellers")
+    .select("user_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (findError) throw findError;
+
+  if (!existingSeller) {
+    const { error: insertError } = await supabaseAdmin
+      .from("sellers")
+      .insert({
+        user_id: userId,
+        verification_status: null,
+        verification_submitted_at: null,
+        verified_at: null,
+        rejection_reason: null,
       });
 
     if (insertError) throw insertError;
