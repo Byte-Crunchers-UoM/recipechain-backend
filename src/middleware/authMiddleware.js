@@ -69,7 +69,7 @@ export const protectAdmin = async (req, res, next) => {
       const { data: profileData, error: profileError } = await supabase
         .from("users")
         .select("role")
-        .eq("id", user.id)
+        .eq("user_id", user.id)
         .single();
 
       if (profileError || !profileData || profileData.role !== "admin") {

@@ -8,16 +8,16 @@ import cookieParser from "cookie-parser";
 import { testConnection } from "./config/supabase.js";
 
 import userRoutes from "./routes/userRoutes.js";
+import buyerRoutes from "./routes/buyerRoutes.js";
+import sellerRoutes from "./routes/sellerRoutes.js";
 import recipeRoutes from "./routes/recipeRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
-import sellerRoutes from "./routes/sellerRoutes.js"; // ✅ NEW
 
 import errorHandler from "./middleware/errorHandler.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// ✅ allow cookies
 app.use(
   cors({
     origin: "http://localhost:3000",
@@ -45,9 +45,10 @@ app.get("/test-db", async (req, res) => {
 
 // Routes
 app.use("/api", userRoutes);
+app.use("/api", buyerRoutes);
+app.use("/api/sellers", sellerRoutes);
 app.use("/api/recipes", recipeRoutes);
 app.use("/api/auth", authRoutes);
-app.use("/api/sellers", sellerRoutes); // ✅ NEW (Seller KYC routes)
 
 // Error handler
 app.use(errorHandler);

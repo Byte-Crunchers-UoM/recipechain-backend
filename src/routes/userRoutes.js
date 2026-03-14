@@ -15,17 +15,16 @@ import { requireSession } from "../middleware/sessionMiddleware.js";
 
 const router = express.Router();
 
+// Public / Standard user routes
 router.post("/user", validateUser, createUser);
 router.get("/user/:id", getUserById);
-router.get("/users", getAllUsers);
 
-// admin-only
-router.get("/all", protectAdmin, getAllUsers);
+// Admin-only routes
+router.get("/users", protectAdmin, getAllUsers);
+router.put("/user/:id", protectAdmin, validateUser, updateUser);
+router.delete("/user/:id", protectAdmin, deleteUser);
 
-router.put("/user/:id", validateUser, updateUser);
-router.delete("/user/:id", deleteUser);
-
-// ✅ session-cookie based
+// Session-cookie based routes
 router.get("/me", requireSession, getMe);
 router.post("/users/role", requireSession, setUserRole);
 

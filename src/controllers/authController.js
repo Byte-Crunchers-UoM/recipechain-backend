@@ -4,7 +4,7 @@ import { supabase, supabaseAdmin } from "../config/supabase.js";
 import userService from "../services/userService.js";
 
 /**
- * ADMIN LOGIN (KEEP THIS)
+ * ADMIN LOGIN
  * POST /api/auth/admin-login
  * Body: { email, password }
  */
@@ -12,7 +12,9 @@ export const adminLogin = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    // 1) Supabase Auth Login
+    console.log("Login attempt for:", email);
+
+    // 1. Supabase Auth Login
     const { data: authData, error: authError } =
       await supabase.auth.signInWithPassword({
         email,
@@ -23,29 +25,42 @@ export const adminLogin = async (req, res) => {
       return res.status(401).json({ message: "Email or Password wrong" });
     }
 
-    // 2) Check Role in users table (PK is user_id in your DB)
-    const { data: profileData, error: profileError } = await supabaseAdmin
+    const userId = authData.user.id;
+
+    // 2. Check parent 'users' table for admin role
+    const { data: userData, error: userError } = await supabase
       .from("users")
       .select("role")
-      .eq("user_id", authData.user.id) // ✅ matches your schema
+      .eq("user_id", userId)
+      .single();
+
+    if (userError || !userData || userData.role !== "admin") {
+      return res.status(403).json({ message: "You are not an Admin" });
+    }
+
+    // 3. Check child 'admins' table for admin username
+    const { data: profileData, error: profileError } = await supabase
+      .from("admins")
+      .select("username")
+      .eq("admin_id", userId)
       .single();
 
     if (profileError || !profileData) {
-      return res.status(500).json({ message: "User Profile data not found" });
+      return res.status(500).json({
+        message: "Admin profile data not found",
+        supabaseError: profileError?.message,
+      });
     }
 
-    // 3) Admin check
-    if (profileData.role !== "admin") {
-      return res.status(403).json({ message: "You are not a Admin" });
-    }
-
+    // 4. Success Response
     return res.status(200).json({
       message: "Admin Login successful!",
       token: authData.session.access_token,
       user: {
-        id: authData.user.id,
+        id: userId,
         email: authData.user.email,
-        role: profileData.role,
+        username: profileData.username,
+        role: userData.role,
       },
     });
   } catch (error) {
@@ -64,7 +79,7 @@ const setSessionCookie = (res, token) => {
   res.cookie("rc_session", token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: false, // ✅ true in production HTTPS
+    secure: false, // true in production HTTPS
     path: "/",
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
@@ -92,19 +107,23 @@ export const syncWeb3AuthUser = async (req, res) => {
     if (!email) {
       return res.status(400).json({
         ok: false,
-        message: "Email missing in Web3Auth token. Enable email scope in Web3Auth.",
+        message:
+          "Email missing in Web3Auth token. Enable email scope in Web3Auth.",
       });
     }
 
     if (!walletAddress || typeof walletAddress !== "string") {
-      return res.status(400).json({ ok: false, message: "walletAddress is required" });
+      return res
+        .status(400)
+        .json({ ok: false, message: "walletAddress is required" });
     }
 
     if (mode !== "login" && mode !== "signup") {
-      return res.status(400).json({ ok: false, message: "mode must be login or signup" });
+      return res
+        .status(400)
+        .json({ ok: false, message: "mode must be login or signup" });
     }
 
-    // 🔎 Check if user exists by email
     const { data: existingUser, error: findErr } = await supabaseAdmin
       .from("users")
       .select("*")
@@ -113,7 +132,6 @@ export const syncWeb3AuthUser = async (req, res) => {
 
     if (findErr) throw findErr;
 
-    // ✅ LOGIN: if not found -> tell user to signup
     if (mode === "login" && !existingUser) {
       return res.status(404).json({
         ok: false,
@@ -121,12 +139,13 @@ export const syncWeb3AuthUser = async (req, res) => {
       });
     }
 
-    // ✅ UPSERT/VERIFY wallet + create user if needed
-    const user = await userService.syncWeb3AuthUser(email.toLowerCase(), walletAddress);
+    const user = await userService.syncWeb3AuthUser(
+      email.toLowerCase(),
+      walletAddress
+    );
 
-    // ✅ Create session cookie with DB role
     const sessionToken = makeSessionToken({
-      user_id: user.user_id, // ✅ your PK column
+      user_id: user.user_id,
       email: user.email,
       role: user.role ?? null,
     });
