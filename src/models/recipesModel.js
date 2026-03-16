@@ -11,19 +11,15 @@ export const getAllRecipesModel = async()=>{
     return data;
 };
 
-export const getFilteredRecipesModel = async (filters) => {
-  const { goal, dietary, cuisine, meal_type, occasion } = filters;
+//Recipe Filtering
+  export const getFilteredRecipesModel = async (filters) => {
+  const { difficulty_level, goal, dietary_tags, cuisine, meal_type, occasion } = filters;
   
   let query = supabase
     .from('recipes')
     .select(`
-      recipe_id,
-      title,
-      description,
-      price,
-      image_url,
-      rating_avg,
-      seller:chef_id (
+      *,
+      sellers:chef_id (
         full_name,
         display_name
       ),
@@ -31,19 +27,32 @@ export const getFilteredRecipesModel = async (filters) => {
     `)
     .eq('status', 'published');
 
-  // Filtering Logic - ensuring column names match the 'tags' table
-  if (goal) query = query.eq('tags.goal', goal);
-  if (dietary) query = query.eq('tags.dietary_tags', dietary);
-  if (cuisine) query = query.eq('tags.cuisine', cuisine);
-  if (meal_type) query = query.eq('tags.meal_type', meal_type);
-  if (occasion) query = query.eq('tags.occasion', occasion);
+  if(difficulty_level) query = query.ilike('difficulty_level', difficulty_level)
+  if (goal) query = query.ilike('tags.goal', goal);
+  if (dietary_tags) query = query.ilike('tags.dietary_tags', dietary_tags);
+  if (cuisine) query = query.ilike('tags.cuisine', cuisine);
+  if (meal_type) query = query.ilike('tags.meal_type', meal_type);
+  if (occasion) query = query.ilike('tags.occasion', occasion);
   
   const { data, error } = await query.order('created_at', { ascending: false });
   
   if (error) throw error;
   return data;
 };
+//seach Recipes
+export const searchRecipesModel = async (searchTerm) => {
+  const { data, error } = await supabase
+    .from('recipes')
+    .select('*, sellers(full_name)')
+    .eq('status', 'published')
+    .textSearch('title', searchTerm, {
+      type: 'websearch',
+      config: 'english'
+    });
 
+  if (error) throw error;
+  return data;
+};
 //CREATE
 export const addRecipeModel = async (recipeData) =>{
     const {data,error} = await supabase

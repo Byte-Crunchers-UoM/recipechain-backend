@@ -12,13 +12,13 @@ const sendResponse = (res, statusCode,success,message,data = null)=>{
 export const getFilteredRecipes = async (req, res, next) => {
     try {
         const filters = {};
-        
+        if (req.query.difficulty_level) filters.difficulty_level = req.query.difficulty_level;
         if (req.query.goal) filters.goal = req.query.goal;
-        if (req.query.dietary) filters.dietary = req.query.dietary;
+        if (req.query.dietary_tags) filters.dietary_tags = req.query.dietary_tags;
         if (req.query.cuisine) filters.cuisine = req.query.cuisine;
         if (req.query.meal_type) filters.meal_type = req.query.meal_type;
         if (req.query.occasion) filters.occasion = req.query.occasion; 
-
+        
         console.log("Filters reaching the backend:", filters); 
         const recipes = await recipeService.getFilteredrecipes(filters);
         
@@ -32,6 +32,20 @@ export const getFilteredRecipes = async (req, res, next) => {
     }
 }
 
+export const searchRecipes = async (req, res, next) => {
+    try {
+        const searchTerm = req.query.q;
+                const data = await recipeService.searchRecipes(searchTerm);
+        
+        res.status(200).json({
+            success: true,
+            count: data.length,
+            data: data
+        });
+    } catch (error) {
+        next(error); 
+    }
+};
 export const getAllRecipes = async(req, res, next)=>{
     try{
     const recipes = await recipeService.getAllRecipes();

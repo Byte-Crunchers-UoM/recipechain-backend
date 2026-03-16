@@ -4,12 +4,13 @@ import { getAllRecipes,
         getRecipeById,
         updateRecipe,
         deleteRecipe,
-        getFilteredRecipes
+        getFilteredRecipes,
+        searchRecipes
  } from '../controllers/recipeController.js';
 
 
 const router = express.Router();
-
+router.get('/search', searchRecipes);
 router.get("/",getAllRecipes);
 
 router.get("/filter",getFilteredRecipes)

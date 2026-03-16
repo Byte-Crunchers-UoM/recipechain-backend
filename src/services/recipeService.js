@@ -4,7 +4,8 @@ import {
   updateRecipeModel,
   deleteRecipeModel,
   getAllRecipesModel,
-  getFilteredRecipesModel
+  getFilteredRecipesModel,
+  searchRecipesModel
 } from "../models/recipesModel.js";
 
 class RecipeService {
@@ -30,6 +31,11 @@ class RecipeService {
     }
   async getFilteredrecipes(filters){
     const recipes = await getFilteredRecipesModel(filters);
+    return recipes;
+  }
+
+  async searchRecipes(searchTerm) {
+    const recipes = await searchRecipesModel(searchTerm);
     return recipes;
   }
 }
