@@ -61,20 +61,22 @@ const getKycStatusByUserId = async (userId) => {
 
   const { data, error } = await supabaseAdmin
     .from("sellers")
-    .select(
-      `
+    .select(`
       verification_status,
       verification_submitted_at,
       verified_at,
       rejection_reason,
       full_name,
+      display_name,
       date_of_birth,
       nationality,
       address,
       phone_no,
-      id_photo_path
-    `
-    )
+      nic_no,
+      cloudinary_public_id,
+      id_document_resource_type,
+      id_document_original_name
+    `)
     .eq("user_id", userId)
     .single();
 

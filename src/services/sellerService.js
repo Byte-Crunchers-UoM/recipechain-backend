@@ -1,5 +1,5 @@
-import { supabaseAdmin } from "../config/supabase.js";
 import sellerModel from "../models/sellerModel.js";
+import { uploadBufferToCloudinary } from "../utils/uploadToCloudinary.js";
 
 const selectSellerRole = async ({ userId }) => {
   const existingSeller = await sellerModel.findSellerByUserId(userId);
@@ -22,11 +22,25 @@ const submitKyc = async ({ userId, body, file }) => {
     nationality,
     address,
     phoneNo,
+    nicNo,
     confirmAccuracy,
     agreeTerms,
   } = body;
 
-  if (!fullName || !dateOfBirth || !nationality || !address || !phoneNo) {
+  const cleanedFullName = fullName?.trim();
+  const cleanedNationality = nationality?.trim();
+  const cleanedAddress = address?.trim();
+  const cleanedPhoneNo = phoneNo?.trim();
+  const cleanedNicNo = nicNo?.trim();
+
+  if (
+    !cleanedFullName ||
+    !dateOfBirth ||
+    !cleanedNationality ||
+    !cleanedAddress ||
+    !cleanedPhoneNo ||
+    !cleanedNicNo
+  ) {
     throw new Error("All required fields must be filled");
   }
 
@@ -38,37 +52,55 @@ const submitKyc = async ({ userId, body, file }) => {
     throw new Error("You must agree to the declarations");
   }
 
+  const allowedTypes = ["image/jpeg", "image/png", "application/pdf"];
+  if (!allowedTypes.includes(file.mimetype)) {
+    throw new Error("Only JPG, PNG and PDF files are allowed");
+  }
+
+  if (file.size > 10 * 1024 * 1024) {
+    throw new Error("File size must be 10MB or less");
+  }
+
   const seller = await sellerModel.findSellerByUserId(userId);
 
   if (!seller) {
     throw new Error("Seller record not found. Please select seller role first.");
   }
 
-  const safeFileName = `${Date.now()}-${file.originalname}`;
-  const filePath = `${userId}/${safeFileName}`;
+  const resourceType =
+    file.mimetype === "application/pdf" ? "raw" : "image";
 
-  if (!supabaseAdmin) {
-    throw new Error("Supabase admin client is not configured");
-  }
+  const safeBaseName = cleanedFullName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 
-  const { error: uploadError } = await supabaseAdmin.storage
-    .from("seller-kyc")
-    .upload(filePath, file.buffer, {
-      contentType: file.mimetype,
-      upsert: true,
-    });
-
-  if (uploadError) {
-    throw new Error(uploadError.message);
-  }
+  const uploadResult = await uploadBufferToCloudinary(file.buffer, {
+    folder: `recipechain/seller-kyc/${userId}`,
+    public_id: `${Date.now()}-${safeBaseName || "seller-id"}`,
+    resource_type: resourceType,
+    use_filename: false,
+    unique_filename: false,
+    overwrite: true,
+    tags: ["recipechain", "seller-kyc"],
+    context: {
+      app: "RecipeChain",
+      module: "seller-kyc",
+      user_id: String(userId),
+    },
+  });
 
   const updatedSeller = await sellerModel.updateSellerByUserId(userId, {
-    full_name: fullName,
+    full_name: cleanedFullName,
+    display_name: cleanedFullName,
     date_of_birth: dateOfBirth,
-    nationality,
-    address,
-    phone_no: phoneNo,
-    id_photo_path: filePath,
+    nationality: cleanedNationality,
+    address: cleanedAddress,
+    phone_no: cleanedPhoneNo,
+    nic_no: cleanedNicNo,
+    cloudinary_public_id: uploadResult.public_id,
+    id_document_resource_type: resourceType,
+    id_document_original_name: file.originalname,
     verification_status: "pending",
     verification_submitted_at: new Date().toISOString(),
     verified_at: null,
