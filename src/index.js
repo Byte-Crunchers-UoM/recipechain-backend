@@ -6,6 +6,8 @@ import express from 'express';
 import cors from 'cors';
 import { testConnection } from './config/supabase.js';
 import userRoutes from './routes/userRoutes.js';
+import buyerRoutes from './routes/buyerRoutes.js';
+import sellerRoutes from './routes/sellerRoutes.js';
 import recipeRoutes from './routes/recipeRoutes.js';
 import errorHandler from './middleware/errorHandler.js';
 
@@ -52,6 +54,8 @@ app.get('/test-db', async (req, res) => {
 app.use('/api', userRoutes);
 app.use('/api/recipes', recipeRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api', buyerRoutes);
+app.use('/api/sellers', sellerRoutes);
 
 // Error handler (must be after all routes)
 app.use(errorHandler);

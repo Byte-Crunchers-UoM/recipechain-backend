@@ -39,7 +39,7 @@ export const getAllRecipesModel = async()=>{
   if (error) throw error;
   return data;
 };
-//seach Recipes
+//search Recipes
 export const searchRecipesModel = async (searchTerm) => {
   const { data, error } = await supabase
     .from('recipes')

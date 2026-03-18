@@ -10,7 +10,7 @@ router.post('/admin-login', adminLogin);
 // 2. Create Test Route ( Access only Admin) ---
 router.get('/admin-dashboard-stats', protectAdmin, (req, res) => {
     res.json({ 
-        message: "Can you see admin dashboard, Middleware is work!", 
+        message: "you can see admin dashboard, Middleware is work!", 
         user: req.user.email 
     });
 });

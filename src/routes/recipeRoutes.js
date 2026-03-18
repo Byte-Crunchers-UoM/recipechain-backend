@@ -10,9 +10,13 @@ import { getAllRecipes,
 
 
 const router = express.Router();
+//search
 router.get('/search', searchRecipes);
+
+//Get all recipes
 router.get("/",getAllRecipes);
 
+//Filter
 router.get("/filter",getFilteredRecipes)
 
 

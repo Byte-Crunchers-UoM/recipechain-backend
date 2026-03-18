@@ -9,6 +9,8 @@ const sendResponse = (res, statusCode,success,message,data = null)=>{
 
 }
 
+
+//Filter Recipes
 export const getFilteredRecipes = async (req, res, next) => {
     try {
         const filters = {};
@@ -32,6 +34,8 @@ export const getFilteredRecipes = async (req, res, next) => {
     }
 }
 
+
+//Search recipes
 export const searchRecipes = async (req, res, next) => {
     try {
         const searchTerm = req.query.q;
@@ -46,6 +50,8 @@ export const searchRecipes = async (req, res, next) => {
         next(error); 
     }
 };
+
+//get all recipes
 export const getAllRecipes = async(req, res, next)=>{
     try{
     const recipes = await recipeService.getAllRecipes();
