@@ -105,6 +105,7 @@ const submitKyc = async ({ userId, body, file }) => {
     verification_submitted_at: new Date().toISOString(),
     verified_at: null,
     rejection_reason: null,
+    kyc_approval_page_seen: false,
   });
 
   return updatedSeller;
@@ -120,8 +121,25 @@ const getKycStatus = async (userId) => {
   return await sellerModel.getKycStatusByUserId(userId);
 };
 
+const markKycApprovalPageSeen = async (userId) => {
+  const seller = await sellerModel.findSellerByUserId(userId);
+
+  if (!seller) {
+    throw new Error("Seller record not found");
+  }
+
+  if (seller.verification_status !== "approved") {
+    throw new Error(
+      "KYC approval page can only be marked as seen for approved sellers"
+    );
+  }
+
+  return await sellerModel.markKycApprovalPageSeenByUserId(userId);
+};
+
 export default {
   selectSellerRole,
   submitKyc,
   getKycStatus,
+  markKycApprovalPageSeen,
 };

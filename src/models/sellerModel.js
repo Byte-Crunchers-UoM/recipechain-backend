@@ -29,6 +29,7 @@ const createSeller = async ({ user_id }) => {
         verification_submitted_at: null,
         verified_at: null,
         rejection_reason: null,
+        kyc_approval_page_seen: false,
       },
     ])
     .select()
@@ -75,9 +76,28 @@ const getKycStatusByUserId = async (userId) => {
       nic_no,
       cloudinary_public_id,
       id_document_resource_type,
-      id_document_original_name
+      id_document_original_name,
+      kyc_approval_page_seen
     `)
     .eq("user_id", userId)
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+const markKycApprovalPageSeenByUserId = async (userId) => {
+  if (!supabaseAdmin) {
+    throw new Error("Supabase admin client is not configured");
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("sellers")
+    .update({
+      kyc_approval_page_seen: true,
+    })
+    .eq("user_id", userId)
+    .select("kyc_approval_page_seen")
     .single();
 
   if (error) throw error;
@@ -89,4 +109,5 @@ export default {
   createSeller,
   updateSellerByUserId,
   getKycStatusByUserId,
+  markKycApprovalPageSeenByUserId,
 };

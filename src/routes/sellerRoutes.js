@@ -14,4 +14,10 @@ router.post(
 
 router.get("/kyc/status", requireSession, sellerController.getKycStatus);
 
+router.patch(
+  "/kyc/approval-page-seen",
+  requireSession,
+  sellerController.markKycApprovalPageSeen
+);
+
 export default router;
