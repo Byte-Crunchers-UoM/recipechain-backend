@@ -84,7 +84,7 @@ class UserService {
     return { message: "User deleted successfully" };
   }
 
-  async syncWeb3AuthUser(email, walletAddress) {
+  async syncWeb3AuthUser(email, walletAddress, authProvider) {
     if (!email) {
       throw new Error(
         "Email missing in Web3Auth token. Enable email return in Web3Auth settings."
@@ -99,7 +99,15 @@ class UserService {
       throw new Error("walletAddress is required");
     }
 
-    return await upsertWeb3AuthUserModel(email.toLowerCase(), walletAddress);
+    if (!authProvider || typeof authProvider !== "string") {
+      throw new Error("Auth provider is missing");
+    }
+
+    return await upsertWeb3AuthUserModel(
+      email.toLowerCase(),
+      walletAddress,
+      authProvider
+    );
   }
 
   async setUserRole(email, role) {

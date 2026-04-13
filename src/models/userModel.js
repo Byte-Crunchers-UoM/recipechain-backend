@@ -3,12 +3,12 @@ import { supabase, supabaseAdmin } from "../config/supabase.js";
 /*
   Data access layer - pure database operations using Supabase
   ------------------------------------------------------------
-  - supabase          -> normal anon client (existing CRUD)
-  - supabaseAdmin     -> service role client (secure backend operations)
+  - supabase      -> normal anon client
+  - supabaseAdmin -> service role client
 */
 
 // =====================================================
-// EXISTING CRUD (Friend's Code) - UNCHANGED (user_id)
+// EXISTING CRUD
 // =====================================================
 
 export const createUserModel = async (username, email) => {
@@ -79,13 +79,33 @@ export const deleteUserModel = async (id) => {
 };
 
 // =====================================================
-// NEW: Web3Auth + XRPL Integration
+// Web3Auth + XRPL
 // =====================================================
 
-export const upsertWeb3AuthUserModel = async (email, walletAddress) => {
+function formatAuthProvider(provider) {
+  const map = {
+    google: "Google",
+    facebook: "Facebook",
+    x: "X",
+    twitter: "X",
+    github: "GitHub",
+    email_passwordless: "Email",
+    email: "Email",
+  };
+
+  return map[String(provider).toLowerCase()] || provider;
+}
+
+export const upsertWeb3AuthUserModel = async (
+  email,
+  walletAddress,
+  authProvider
+) => {
   if (!supabaseAdmin) {
     throw new Error("SUPABASE_SERVICE_ROLE_KEY missing in backend .env");
   }
+
+  const normalizedProvider = String(authProvider).toLowerCase();
 
   const { data: existingUser, error: findError } = await supabaseAdmin
     .from("users")
@@ -95,12 +115,14 @@ export const upsertWeb3AuthUserModel = async (email, walletAddress) => {
 
   if (findError) throw findError;
 
+  // New user
   if (!existingUser) {
     const { data: newUser, error: insertError } = await supabaseAdmin
       .from("users")
       .insert({
         email,
         wallet_address: walletAddress,
+        auth_provider: normalizedProvider,
       })
       .select("*")
       .single();
@@ -109,17 +131,45 @@ export const upsertWeb3AuthUserModel = async (email, walletAddress) => {
     return newUser;
   }
 
+  // Existing email but different provider
+  if (
+    existingUser.auth_provider &&
+    existingUser.auth_provider !== normalizedProvider
+  ) {
+    const providerName = formatAuthProvider(existingUser.auth_provider);
+    throw new Error(
+      `This email is already registered with ${providerName}. Please continue with ${providerName}.`
+    );
+  }
+
+  // Existing email but different wallet
   if (
     existingUser.wallet_address &&
     existingUser.wallet_address !== walletAddress
   ) {
-    throw new Error("Wallet mismatch. Login denied.");
+    const providerName = formatAuthProvider(
+      existingUser.auth_provider || normalizedProvider
+    );
+    throw new Error(
+      `This email is already registered with ${providerName}. Please continue with ${providerName}.`
+    );
   }
 
+  // Backfill missing fields if needed
+  const updates = {};
+
   if (!existingUser.wallet_address) {
+    updates.wallet_address = walletAddress;
+  }
+
+  if (!existingUser.auth_provider) {
+    updates.auth_provider = normalizedProvider;
+  }
+
+  if (Object.keys(updates).length > 0) {
     const { data: updatedUser, error: updateError } = await supabaseAdmin
       .from("users")
-      .update({ wallet_address: walletAddress })
+      .update(updates)
       .eq("user_id", existingUser.user_id)
       .select("*")
       .single();
@@ -132,7 +182,7 @@ export const upsertWeb3AuthUserModel = async (email, walletAddress) => {
 };
 
 // =====================================================
-// Role Handling
+// ROLE HELPERS
 // =====================================================
 
 export const setUserRoleModel = async (email, role) => {
@@ -168,7 +218,7 @@ export const setUserRoleByUserIdModel = async (userId, role) => {
 };
 
 // =====================================================
-// Session-based Fetch
+// SESSION FETCH
 // =====================================================
 
 export const getUserByUserIdModel = async (userId) => {
@@ -187,10 +237,10 @@ export const getUserByUserIdModel = async (userId) => {
 };
 
 // =====================================================
-// Buyer Table Handling
+// BUYER / SELLER ENSURE HELPERS
 // =====================================================
 
-export const ensureBuyerRowModel = async (userId, displayNameEmail) => {
+export const ensureBuyerRowModel = async (userId, email) => {
   if (!supabaseAdmin) {
     throw new Error("SUPABASE_SERVICE_ROLE_KEY missing in backend .env");
   }
@@ -202,24 +252,25 @@ export const ensureBuyerRowModel = async (userId, displayNameEmail) => {
     .maybeSingle();
 
   if (findError) throw findError;
+  if (existingBuyer) return existingBuyer;
 
-  if (!existingBuyer) {
-    const { error: insertError } = await supabaseAdmin
-      .from("buyers")
-      .insert({
-        user_id: userId,
-        display_name: displayNameEmail,
-      });
+  const displayName =
+    typeof email === "string" && email.includes("@")
+      ? email.split("@")[0]
+      : "Buyer";
 
-    if (insertError) throw insertError;
-  }
+  const { data, error } = await supabaseAdmin
+    .from("buyers")
+    .insert({
+      user_id: userId,
+      display_name: displayName,
+    })
+    .select("*")
+    .single();
 
-  return true;
+  if (error) throw error;
+  return data;
 };
-
-// =====================================================
-// Seller Table Handling
-// =====================================================
 
 export const ensureSellerRowModel = async (userId) => {
   if (!supabaseAdmin) {
@@ -233,20 +284,21 @@ export const ensureSellerRowModel = async (userId) => {
     .maybeSingle();
 
   if (findError) throw findError;
+  if (existingSeller) return existingSeller;
 
-  if (!existingSeller) {
-    const { error: insertError } = await supabaseAdmin
-      .from("sellers")
-      .insert({
-        user_id: userId,
-        verification_status: null,
-        verification_submitted_at: null,
-        verified_at: null,
-        rejection_reason: null,
-      });
+  const { data, error } = await supabaseAdmin
+    .from("sellers")
+    .insert({
+      user_id: userId,
+      verification_status: null,
+      verification_submitted_at: null,
+      verified_at: null,
+      rejection_reason: null,
+      kyc_approval_page_seen: false,
+    })
+    .select("*")
+    .single();
 
-    if (insertError) throw insertError;
-  }
-
-  return true;
+  if (error) throw error;
+  return data;
 };
