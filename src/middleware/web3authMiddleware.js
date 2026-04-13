@@ -11,24 +11,50 @@ export const requireWeb3Auth = async (req, res, next) => {
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
 
     if (!token) {
-      return res.status(401).json({ ok: false, message: "Missing Authorization Bearer token" });
+      return res.status(401).json({
+        ok: false,
+        message: "Missing Authorization Bearer token",
+      });
     }
 
     const audience = process.env.WEB3AUTH_CLIENT_ID;
     if (!audience) {
-      return res.status(500).json({ ok: false, message: "Missing WEB3AUTH_CLIENT_ID in .env" });
+      return res.status(500).json({
+        ok: false,
+        message: "Missing WEB3AUTH_CLIENT_ID in .env",
+      });
     }
 
-    const { payload } = await jose.jwtVerify(token, jwks, {
+    const { payload, protectedHeader } = await jose.jwtVerify(token, jwks, {
       algorithms: ["ES256"],
       issuer: WEB3AUTH_ISSUER,
       audience,
     });
 
-    // payload now trusted
+    console.log("Web3Auth token verified:", {
+      iss: payload.iss,
+      aud: payload.aud,
+      email: payload.email,
+      userId: payload.userId,
+      authConnection: payload.authConnection,
+      groupedAuthConnectionId: payload.groupedAuthConnectionId,
+      alg: protectedHeader.alg,
+    });
+
     req.web3auth = payload;
     next();
   } catch (e) {
-    return res.status(401).json({ ok: false, message: "Invalid Web3Auth token" });
+    console.error("Web3Auth token verification failed:", {
+      message: e?.message,
+      code: e?.code,
+      claim: e?.claim,
+      reason: e?.reason,
+    });
+
+    return res.status(401).json({
+      ok: false,
+      message: "Invalid Web3Auth token",
+      detail: e?.message || "Unknown token verification error",
+    });
   }
 };
