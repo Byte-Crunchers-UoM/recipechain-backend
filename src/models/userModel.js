@@ -1,12 +1,5 @@
 import { supabase, supabaseAdmin } from "../config/supabase.js";
 
-/*
-  Data access layer - pure database operations using Supabase
-  ------------------------------------------------------------
-  - supabase      -> normal anon client
-  - supabaseAdmin -> service role client
-*/
-
 // =====================================================
 // EXISTING CRUD
 // =====================================================
@@ -79,21 +72,61 @@ export const deleteUserModel = async (id) => {
 };
 
 // =====================================================
-// Web3Auth + XRPL
+// Web3Auth + XRPL Integration
 // =====================================================
 
+function normalizeAuthProvider(provider) {
+  const raw = String(provider || "").toLowerCase().trim();
+
+  if (raw.includes("google") || raw === "w3a-google" || raw === "google") {
+    return "google";
+  }
+
+  if (
+    raw.includes("facebook") ||
+    raw === "w3a-facebook" ||
+    raw === "facebook"
+  ) {
+    return "facebook";
+  }
+
+  if (
+    raw === "x" ||
+    raw.includes("twitter") ||
+    raw.includes("x-twitter") ||
+    raw === "w3a-twitter"
+  ) {
+    return "x";
+  }
+
+  if (raw.includes("github") || raw === "w3a-github" || raw === "github") {
+    return "github";
+  }
+
+  if (
+    raw.includes("email") ||
+    raw.includes("passwordless") ||
+    raw === "email_passwordless"
+  ) {
+    return "email";
+  }
+
+  return raw || "unknown";
+}
+
 function formatAuthProvider(provider) {
+  const normalized = normalizeAuthProvider(provider);
+
   const map = {
     google: "Google",
     facebook: "Facebook",
     x: "X",
-    twitter: "X",
     github: "GitHub",
-    email_passwordless: "Email",
     email: "Email",
+    unknown: "your original sign-in method",
   };
 
-  return map[String(provider).toLowerCase()] || provider;
+  return map[normalized] || provider;
 }
 
 export const upsertWeb3AuthUserModel = async (
@@ -105,19 +138,19 @@ export const upsertWeb3AuthUserModel = async (
     throw new Error("SUPABASE_SERVICE_ROLE_KEY missing in backend .env");
   }
 
-  const normalizedProvider = String(authProvider).toLowerCase();
+  const normalizedProvider = normalizeAuthProvider(authProvider);
 
-  const { data: existingUser, error: findError } = await supabaseAdmin
+  const { data: existingUser, error } = await supabaseAdmin
     .from("users")
     .select("*")
     .eq("email", email)
     .maybeSingle();
 
-  if (findError) throw findError;
+  if (error) throw error;
 
-  // New user
+  // New user -> create
   if (!existingUser) {
-    const { data: newUser, error: insertError } = await supabaseAdmin
+    const { data, error: insertError } = await supabaseAdmin
       .from("users")
       .insert({
         email,
@@ -128,42 +161,30 @@ export const upsertWeb3AuthUserModel = async (
       .single();
 
     if (insertError) throw insertError;
-    return newUser;
+    return data;
   }
 
-  // Existing email but different provider
-  if (
-    existingUser.auth_provider &&
-    existingUser.auth_provider !== normalizedProvider
-  ) {
-    const providerName = formatAuthProvider(existingUser.auth_provider);
+  const existingProvider = normalizeAuthProvider(existingUser.auth_provider);
+
+  // Same email + different provider -> block
+  if (existingProvider && existingProvider !== normalizedProvider) {
+    const providerName = formatAuthProvider(existingProvider);
+
     throw new Error(
-      `This email is already registered with ${providerName}. Please continue with ${providerName}.`
+      `This email is already registered with ${providerName}. Please login using ${providerName}.`
     );
   }
 
-  // Existing email but different wallet
-  if (
-    existingUser.wallet_address &&
-    existingUser.wallet_address !== walletAddress
-  ) {
-    const providerName = formatAuthProvider(
-      existingUser.auth_provider || normalizedProvider
-    );
-    throw new Error(
-      `This email is already registered with ${providerName}. Please continue with ${providerName}.`
-    );
-  }
-
-  // Backfill missing fields if needed
+  // Same provider -> allow existing account
+  // Optional backfill for missing values
   const updates = {};
-
-  if (!existingUser.wallet_address) {
-    updates.wallet_address = walletAddress;
-  }
 
   if (!existingUser.auth_provider) {
     updates.auth_provider = normalizedProvider;
+  }
+
+  if (!existingUser.wallet_address) {
+    updates.wallet_address = walletAddress;
   }
 
   if (Object.keys(updates).length > 0) {
@@ -182,7 +203,7 @@ export const upsertWeb3AuthUserModel = async (
 };
 
 // =====================================================
-// ROLE HELPERS
+// Role Handling
 // =====================================================
 
 export const setUserRoleModel = async (email, role) => {
@@ -218,7 +239,7 @@ export const setUserRoleByUserIdModel = async (userId, role) => {
 };
 
 // =====================================================
-// SESSION FETCH
+// Session-based Fetch
 // =====================================================
 
 export const getUserByUserIdModel = async (userId) => {
@@ -237,7 +258,7 @@ export const getUserByUserIdModel = async (userId) => {
 };
 
 // =====================================================
-// BUYER / SELLER ENSURE HELPERS
+// Buyer / Seller Helpers
 // =====================================================
 
 export const ensureBuyerRowModel = async (userId, email) => {
