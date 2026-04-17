@@ -47,7 +47,13 @@ export const updateUser = async (req, res, next) => {
     if (!updatedUser) {
       return sendResponse(res, 404, false, "User not found");
     }
-    return sendResponse(res, 200, true, "User updated successfully", updatedUser);
+    return sendResponse(
+      res,
+      200,
+      true,
+      "User updated successfully",
+      updatedUser
+    );
   } catch (err) {
     next(err);
   }
@@ -65,7 +71,7 @@ export const deleteUser = async (req, res, next) => {
 
 export const getMe = async (req, res) => {
   try {
-    const userId = req.session?.user_id;
+    const userId = req.session?.user_id || req.user?.user_id;
     if (!userId) {
       return sendResponse(res, 401, false, "No session user_id found");
     }
@@ -80,8 +86,8 @@ export const getMe = async (req, res) => {
 
 export const setUserRole = async (req, res) => {
   try {
-    const userId = req.session?.user_id;
-    const email = req.session?.email;
+    const userId = req.session?.user_id || req.user?.user_id;
+    const email = req.session?.email || req.user?.email;
     const { role } = req.body;
 
     if (!userId || !email) {
@@ -109,5 +115,57 @@ export const setUserRole = async (req, res) => {
   } catch (e) {
     console.error("setUserRole error:", e);
     return sendResponse(res, 400, false, e?.message || "Role update failed");
+  }
+};
+
+export const requestMyAccountDeletion = async (req, res) => {
+  try {
+    const userId = req.session?.user_id || req.user?.user_id;
+
+    if (!userId) {
+      return sendResponse(res, 401, false, "Missing session. Please login again.");
+    }
+
+    const updatedUser = await userService.requestAccountDeletion(userId);
+
+    return res.status(200).json({
+      ok: true,
+      message: "Account deletion request submitted successfully.",
+      data: updatedUser,
+    });
+  } catch (e) {
+    console.error("requestMyAccountDeletion error:", e);
+    return res.status(400).json({
+      ok: false,
+      message: e?.message || "Failed to request account deletion",
+    });
+  }
+};
+
+export const deleteMyAccountPermanently = async (req, res) => {
+  try {
+    const userId = req.session?.user_id || req.user?.user_id;
+
+    if (!userId) {
+      return res.status(401).json({
+        ok: false,
+        message: "Missing session. Please login again.",
+      });
+    }
+
+    await userService.deleteMyAccountPermanently(userId);
+
+    res.clearCookie("rc_session", { path: "/" });
+
+    return res.status(200).json({
+      ok: true,
+      message: "Account deleted permanently.",
+    });
+  } catch (e) {
+    console.error("deleteMyAccountPermanently error:", e);
+    return res.status(400).json({
+      ok: false,
+      message: e?.message || "Failed to delete account permanently",
+    });
   }
 };
