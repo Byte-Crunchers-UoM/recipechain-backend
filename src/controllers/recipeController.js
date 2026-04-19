@@ -55,7 +55,7 @@ export const searchRecipes = async (req, res, next) => {
 export const getAllRecipes = async(req, res, next)=>{
     try{
     const recipes = await recipeService.getAllRecipes();
-    return sendResponse(res, 200,true, 'recipes retrieved successfully',recipes);
+    return sendResponse(res, 200, true, 'recipes retrieved successfully',recipes);
     }catch(err){
         next(err);
     }
