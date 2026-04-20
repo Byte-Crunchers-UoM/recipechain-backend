@@ -11,7 +11,7 @@ const submitKyc = async (req, res, next) => {
     const result = await sellerService.submitKyc({
       userId,
       body: req.body,
-      file: req.file,
+      files: req.files,
     });
 
     return res.status(200).json({
@@ -19,6 +19,15 @@ const submitKyc = async (req, res, next) => {
       data: result,
     });
   } catch (error) {
+    if (error?.name === "DuplicateSellerIdentityError") {
+      return res.status(error.statusCode || 409).json({
+        message: "duplicate_seller_identity",
+        field: error.field,
+        status: error.status,
+        friendlyMessage: error.friendlyMessage,
+      });
+    }
+
     next(error);
   }
 };

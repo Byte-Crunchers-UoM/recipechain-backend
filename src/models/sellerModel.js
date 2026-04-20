@@ -15,6 +15,46 @@ const findSellerByUserId = async (userId) => {
   return data;
 };
 
+const findSellerByNicNormalized = async (nicNoNormalized, excludeUserId = null) => {
+  if (!supabaseAdmin) {
+    throw new Error("Supabase admin client is not configured");
+  }
+
+  let query = supabaseAdmin
+    .from("sellers")
+    .select("user_id, nic_no, full_name, verification_status")
+    .eq("nic_no_normalized", nicNoNormalized);
+
+  if (excludeUserId) {
+    query = query.neq("user_id", excludeUserId);
+  }
+
+  const { data, error } = await query.maybeSingle();
+
+  if (error) throw error;
+  return data;
+};
+
+const findSellerByPhoneNormalized = async (phoneNoNormalized, excludeUserId = null) => {
+  if (!supabaseAdmin) {
+    throw new Error("Supabase admin client is not configured");
+  }
+
+  let query = supabaseAdmin
+    .from("sellers")
+    .select("user_id, phone_no, full_name, verification_status")
+    .eq("phone_no_normalized", phoneNoNormalized);
+
+  if (excludeUserId) {
+    query = query.neq("user_id", excludeUserId);
+  }
+
+  const { data, error } = await query.maybeSingle();
+
+  if (error) throw error;
+  return data;
+};
+
 const createSeller = async ({ user_id }) => {
   if (!supabaseAdmin) {
     throw new Error("Supabase admin client is not configured");
@@ -73,7 +113,17 @@ const getKycStatusByUserId = async (userId) => {
       nationality,
       address,
       phone_no,
+      phone_no_normalized,
       nic_no,
+      nic_no_normalized,
+      id_document_front_url,
+      id_document_front_public_id,
+      id_document_front_resource_type,
+      id_document_front_original_name,
+      id_document_back_url,
+      id_document_back_public_id,
+      id_document_back_resource_type,
+      id_document_back_original_name,
       cloudinary_public_id,
       id_document_resource_type,
       id_document_original_name,
@@ -106,6 +156,8 @@ const markKycApprovalPageSeenByUserId = async (userId) => {
 
 export default {
   findSellerByUserId,
+  findSellerByNicNormalized,
+  findSellerByPhoneNormalized,
   createSeller,
   updateSellerByUserId,
   getKycStatusByUserId,
