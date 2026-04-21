@@ -1,3 +1,4 @@
+import { supabaseAdmin } from "../config/supabase.js";
 import {
   createUserModel,
   getUserByIdModel,
@@ -39,6 +40,12 @@ class UserService {
 
   isValidRole(role) {
     return role === "buyer" || role === "seller";
+  }
+
+  getEmailPrefix(email) {
+    const safeEmail = String(email || "").trim();
+    if (!safeEmail) return "Buyer";
+    return safeEmail.split("@")[0] || "Buyer";
   }
 
   async createUser(username, email) {
@@ -143,6 +150,76 @@ class UserService {
       walletAddress.trim(),
       normalizedAuthProvider
     );
+  }
+
+  async hydrateBuyerIdentityFromWeb3Auth({
+    userId,
+    email,
+    name,
+    profileImage,
+  }) {
+    if (!supabaseAdmin) {
+      throw new Error("Supabase admin client is not configured");
+    }
+
+    if (!userId) {
+      throw new Error("Missing userId for buyer hydration");
+    }
+
+    const cleanName = String(name || "").trim();
+    const cleanProfileImage = String(profileImage || "").trim();
+    const normalizedEmail = this.normalizeEmail(email);
+    const fallbackDisplayName = cleanName || this.getEmailPrefix(normalizedEmail);
+
+    const { data: existingBuyer, error: findError } = await supabaseAdmin
+      .from("buyers")
+      .select("user_id, display_name, profile_picture")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (findError) {
+      throw findError;
+    }
+
+    if (!existingBuyer) {
+      const { error: insertError } = await supabaseAdmin.from("buyers").insert({
+        user_id: userId,
+        display_name: fallbackDisplayName,
+        bio: "",
+        profile_picture: cleanProfileImage || null,
+        total_purchases: 0,
+        total_spent_xrp: 0,
+        account_balance: 0,
+      });
+
+      if (insertError) throw insertError;
+      return;
+    }
+
+    const updates = {};
+
+    const currentDisplayName = String(existingBuyer.display_name || "").trim();
+    const currentProfilePicture = String(
+      existingBuyer.profile_picture || ""
+    ).trim();
+
+    if (!currentDisplayName || currentDisplayName === "New Buyer") {
+      updates.display_name = fallbackDisplayName;
+    }
+
+    // only auto-fill if the user does not already have a custom/manual profile photo
+    if (!currentProfilePicture && cleanProfileImage) {
+      updates.profile_picture = cleanProfileImage;
+    }
+
+    if (Object.keys(updates).length > 0) {
+      const { error: updateError } = await supabaseAdmin
+        .from("buyers")
+        .update(updates)
+        .eq("user_id", userId);
+
+      if (updateError) throw updateError;
+    }
   }
 
   async setUserRole(email, role) {

@@ -1,6 +1,6 @@
 // src/controllers/authController.js
 import jwt from "jsonwebtoken";
-import { supabase, supabaseAdmin } from "../config/supabase.js";
+import { supabase } from "../config/supabase.js";
 import userService from "../services/userService.js";
 
 /**
@@ -89,6 +89,18 @@ export const syncWeb3AuthUser = async (req, res) => {
       req.web3auth?.groupedAuthConnectionId ||
       "unknown";
 
+    const name =
+      req.web3auth?.name ||
+      req.web3auth?.username ||
+      req.web3auth?.userName ||
+      "";
+
+    const profileImage =
+      req.web3auth?.picture ||
+      req.web3auth?.profileImage ||
+      req.web3auth?.profile_image ||
+      "";
+
     const { walletAddress } = req.body;
 
     if (!email) {
@@ -103,6 +115,13 @@ export const syncWeb3AuthUser = async (req, res) => {
       walletAddress,
       authProvider
     );
+
+    await userService.hydrateBuyerIdentityFromWeb3Auth({
+      userId: user.user_id,
+      email: email.toLowerCase(),
+      name,
+      profileImage,
+    });
 
     const sessionToken = makeSessionToken({
       user_id: user.user_id,
@@ -121,7 +140,6 @@ export const syncWeb3AuthUser = async (req, res) => {
 
     const message = error?.message || "Server error";
 
-    // ✅ PROVIDER MISMATCH (FRIENDLY ERROR)
     if (message.includes("already registered with")) {
       return res.status(409).json({ ok: false, message });
     }
