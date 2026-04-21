@@ -157,12 +157,12 @@ const submitKyc = async ({ userId, body, files }) => {
       "Your KYC verification is already under review. Please wait for the review to complete before resubmitting."
     );
   }
+
   if (seller.verification_status === "approved") {
     throw new Error(
       "Your KYC has already been approved. No further submissions are required."
     );
   }
-
 
   const normalizedNic = normalizeNic(cleanedNicNo);
   const normalizedPhone = normalizePhone(cleanedPhoneNo);

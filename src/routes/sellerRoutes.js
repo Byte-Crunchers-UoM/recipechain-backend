@@ -1,5 +1,5 @@
 import express from "express";
-import sellerController from "../controllers/sellerController.js"; 
+import sellerController from "../controllers/sellerController.js"; // ✅ FIXED
 import upload from "../middleware/uploadMiddleware.js";
 import { requireSession } from "../middleware/sessionMiddleware.js";
 
