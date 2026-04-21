@@ -17,7 +17,7 @@ const selectSellerRole = async ({ userId }) => {
 };
 
 const normalizeNic = (value = "") => {
-  return value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().trim();
+  return value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
 };
 
 const normalizePhone = (value = "") => {
@@ -150,6 +150,18 @@ const submitKyc = async ({ userId, body, files }) => {
 
   if (!seller) {
     throw new Error("Seller record not found. Please select seller role first.");
+  }
+
+  if (seller.verification_status === "pending") {
+    throw new Error(
+      "Your KYC verification is already under review. Please wait for the review to complete before resubmitting."
+    );
+  }
+
+  if (seller.verification_status === "approved") {
+    throw new Error(
+      "Your KYC has already been approved. No further submissions are required."
+    );
   }
 
   const normalizedNic = normalizeNic(cleanedNicNo);
