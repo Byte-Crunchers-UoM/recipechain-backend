@@ -12,6 +12,8 @@ import buyerRoutes from "./routes/buyerRoutes.js";
 import sellerRoutes from "./routes/sellerRoutes.js";
 import recipeRoutes from "./routes/recipeRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
+import walletRoutes from "./routes/walletRoutes.js";
+import stripeRoutes from "./routes/stripeRoutes.js";
 
 import errorHandler from "./middleware/errorHandler.js";
 
@@ -26,6 +28,11 @@ app.use(
 );
 
 app.use(cookieParser());
+
+// Stripe webhook route must come BEFORE express.json()
+app.use("/api/stripe", stripeRoutes);
+
+// Normal body parsers for the rest of the app
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -60,6 +67,7 @@ app.use("/api/buyer", buyerRoutes);
 app.use("/api/sellers", sellerRoutes);
 app.use("/api/recipes", recipeRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/wallet", walletRoutes);
 
 // Error handler
 app.use(errorHandler);
@@ -70,6 +78,9 @@ const startServer = async () => {
     await testConnection();
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
+      console.log(
+        `Frontend origin: ${process.env.FRONTEND_URL || "http://localhost:3000"}`
+      );
     });
   } catch (error) {
     console.error("Failed to start server:", error.message);
