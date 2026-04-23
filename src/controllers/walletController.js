@@ -42,6 +42,7 @@ export const createStripeTopupCheckoutSession = async (req, res) => {
   try {
     const userId = getUserId(req);
     if (!userId) {
+      console.log("Checkout session blocked: no userId in session");
       return res.status(401).json({ ok: false, message: "Unauthorized" });
     }
 
@@ -56,12 +57,13 @@ export const createStripeTopupCheckoutSession = async (req, res) => {
     console.log("Creating Stripe checkout session:", {
       userId,
       amount,
+      frontendBaseUrl,
     });
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
-      success_url: `${frontendBaseUrl}/buyer/profile?topup=success`,
+      success_url: `${frontendBaseUrl}/buyer/profile?topup=success&amount=${amount}`,
       cancel_url: `${frontendBaseUrl}/buyer/profile?topup=cancelled`,
       client_reference_id: userId,
       metadata: {
