@@ -1,20 +1,31 @@
-import express from 'express';
-import { createUser, getUserById, getAllUsers, updateUser, deleteUser } from '../controllers/userController.js';
-import validateUser from '../middleware/inputValidators.js';
-import { protectAdmin } from '../middleware/authMiddleware.js';
+import express from "express";
+import {
+  createUser,
+  getUserById,
+  getAllUsers,
+  updateUser,
+  deleteUser,
+  setUserRole,
+  getMe,
+} from "../controllers/userController.js";
+
+import validateUser from "../middleware/inputValidators.js";
+import { protectAdmin } from "../middleware/authMiddleware.js";
+import { requireSession } from "../middleware/sessionMiddleware.js";
 
 const router = express.Router();
 
-// Public/Standard User Routes
+// Public / Standard user routes
 router.post("/user", validateUser, createUser);
-router.get("/user/:id", getUserById); // Note: Update your controller/service to use user_id here
+router.get("/user/:id", getUserById);
 
-// Protected Admin Routes
-// Using 'protectAdmin' ensures only users in your 'admins' table can access this
+// Admin-only routes
 router.get("/users", protectAdmin, getAllUsers);
-
-// User Management (Protected)
 router.put("/user/:id", protectAdmin, validateUser, updateUser);
 router.delete("/user/:id", protectAdmin, deleteUser);
+
+// Session-cookie based routes
+router.get("/me", requireSession, getMe);
+router.post("/users/role", requireSession, setUserRole);
 
 export default router;
