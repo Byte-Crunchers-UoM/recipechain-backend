@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { supabase } from "../config/supabase.js";
 import buyerService from "../services/buyerService.js";
+import cookbookService from "../services/cookbookService.js";
 
 export const createBuyer = async (req, res) => {
   const { email, wallet_address, display_name, bio } = req.body;
@@ -241,6 +242,168 @@ export const updateMyBuyerProfile = async (req, res) => {
     return res.status(400).json({
       ok: false,
       message: error.message || "Failed to update buyer profile",
+    });
+  }
+};
+
+export const getMyCookbook = async (req, res) => {
+  try {
+    const buyerId = req.user?.user_id;
+
+    if (!buyerId) {
+      return res.status(401).json({
+        ok: false,
+        message: "Authenticated user not found in session",
+      });
+    }
+
+    const search = String(req.query.q || "");
+    const reviewStatus = String(req.query.reviewStatus || "all");
+    const favoritesOnly =
+      String(req.query.favoritesOnly || "false").toLowerCase() === "true";
+
+    const items = await cookbookService.getMyCookbook({
+      buyerId,
+      search,
+      reviewStatus,
+      favoritesOnly,
+    });
+
+    return res.status(200).json({
+      ok: true,
+      items,
+    });
+  } catch (error) {
+    console.error("getMyCookbook error:", error);
+    return res.status(error.statusCode || 500).json({
+      ok: false,
+      message: error.message || "Failed to fetch cookbook",
+    });
+  }
+};
+
+export const getMyCookbookRecipeDetails = async (req, res) => {
+  try {
+    const buyerId = req.user?.user_id;
+    const { recipeId } = req.params;
+
+    if (!buyerId) {
+      return res.status(401).json({
+        ok: false,
+        message: "Authenticated user not found in session",
+      });
+    }
+
+    const recipe = await cookbookService.getCookbookRecipeDetails({
+      buyerId,
+      recipeId,
+    });
+
+    return res.status(200).json({
+      ok: true,
+      recipe,
+    });
+  } catch (error) {
+    console.error("getMyCookbookRecipeDetails error:", error);
+    return res.status(error.statusCode || 500).json({
+      ok: false,
+      message: error.message || "Failed to fetch recipe details",
+    });
+  }
+};
+
+export const getMyCookbookRecipeForReview = async (req, res) => {
+  try {
+    const buyerId = req.user?.user_id;
+    const { recipeId } = req.params;
+
+    if (!buyerId) {
+      return res.status(401).json({
+        ok: false,
+        message: "Authenticated user not found in session",
+      });
+    }
+
+    const recipe = await cookbookService.getCookbookRecipeForReview({
+      buyerId,
+      recipeId,
+    });
+
+    return res.status(200).json({
+      ok: true,
+      recipe,
+    });
+  } catch (error) {
+    console.error("getMyCookbookRecipeForReview error:", error);
+    return res.status(error.statusCode || 500).json({
+      ok: false,
+      message: error.message || "Failed to fetch recipe review data",
+    });
+  }
+};
+
+export const upsertMyCookbookRecipeReview = async (req, res) => {
+  try {
+    const buyerId = req.user?.user_id;
+    const { recipeId } = req.params;
+    const { rating, comment } = req.body || {};
+    const files = Array.isArray(req.files) ? req.files : [];
+
+    if (!buyerId) {
+      return res.status(401).json({
+        ok: false,
+        message: "Authenticated user not found in session",
+      });
+    }
+
+    const result = await cookbookService.upsertRecipeReview({
+      buyerId,
+      recipeId,
+      rating,
+      comment,
+      files,
+    });
+
+    return res.status(200).json({
+      ok: true,
+      message: "Review saved successfully",
+      ...result,
+    });
+  } catch (error) {
+    console.error("upsertMyCookbookRecipeReview error:", error);
+    return res.status(error.statusCode || 500).json({
+      ok: false,
+      message: error.message || "Failed to save review",
+    });
+  }
+};
+
+export const toggleMyCookbookFavorite = async (req, res) => {
+  try {
+    const userId = req.user?.user_id;
+    const { recipeId } = req.params;
+
+    if (!userId) {
+      return res.status(401).json({
+        ok: false,
+        message: "Authenticated user not found in session",
+      });
+    }
+
+    const result = await cookbookService.toggleFavorite({
+      userId,
+      recipeId,
+    });
+
+    return res.status(200).json({
+      ok: true,
+      ...result,
+    });
+  } catch (error) {
+    console.error("toggleMyCookbookFavorite error:", error);
+    return res.status(error.statusCode || 500).json({
+      ok: false,
+      message: error.message || "Failed to update favorite",
     });
   }
 };

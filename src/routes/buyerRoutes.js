@@ -8,6 +8,11 @@ import {
   deleteBuyer,
   getMyBuyerProfile,
   updateMyBuyerProfile,
+  getMyCookbook,
+  getMyCookbookRecipeDetails,
+  getMyCookbookRecipeForReview,
+  upsertMyCookbookRecipeReview,
+  toggleMyCookbookFavorite,
 } from "../controllers/buyerController.js";
 import { requireSession } from "../middleware/sessionMiddleware.js";
 
@@ -21,6 +26,17 @@ router.patch(
   upload.single("profilePhoto"),
   updateMyBuyerProfile
 );
+
+router.get("/me/cookbook", requireSession, getMyCookbook);
+router.get("/me/cookbook/:recipeId", requireSession, getMyCookbookRecipeDetails);
+router.get("/me/cookbook/:recipeId/review", requireSession, getMyCookbookRecipeForReview);
+router.post(
+  "/me/cookbook/:recipeId/review",
+  requireSession,
+  upload.array("photos", 5),
+  upsertMyCookbookRecipeReview
+);
+router.post("/me/cookbook/:recipeId/favorite", requireSession, toggleMyCookbookFavorite);
 
 router.post("/", createBuyer);
 router.get("/", getAllBuyers);
