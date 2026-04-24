@@ -2,18 +2,22 @@ import jwt from "jsonwebtoken";
 
 export const requireSession = (req, res, next) => {
   try {
-    const token = req.cookies?.rc_session;
-    if (!token) return res.status(401).json({ ok: false, message: "No session" });
+    const token = req.cookies.rc_session;
 
-    const secret = process.env.SESSION_SECRET;
-    if (!secret) {
-      return res.status(500).json({ ok: false, message: "Missing SESSION_SECRET" });
+    if (!token) {
+      return res.status(401).json({
+        message: "Authenticated user not found in session",
+      });
     }
 
-    const payload = jwt.verify(token, secret);
-    req.session = payload; // { user_id, email, role }
+    const decoded = jwt.verify(token, process.env.SESSION_SECRET);
+
+    req.user = decoded;
+
     next();
-  } catch (e) {
-    return res.status(401).json({ ok: false, message: "Invalid session" });
+  } catch (err) {
+    return res.status(401).json({
+      message: "Invalid session",
+    });
   }
 };

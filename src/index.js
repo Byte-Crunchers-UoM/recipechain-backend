@@ -12,7 +12,8 @@ import errorHandler from './middleware/errorHandler.js';
 import cookieParser from "cookie-parser";
 import sellerRoutes from "./routes/sellerRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
-
+import walletRoutes from './routes/walletRoutes.js';
+import stripeRoutes from './routes/stripeRoutes.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -25,6 +26,7 @@ app.use(
 );
 
 app.use(cookieParser());
+app.use('/api/stripe', stripeRoutes);
 app.use(express.json());
 
 // Health check
@@ -47,8 +49,10 @@ app.use('/api', userRoutes);
 app.use('/api/recipes', recipeRoutes);
 app.use('/api/savedrecipes', savedRecipeRoutes)
 app.use('/api/auth', authRoutes);
-app.use('/api', buyerRoutes);
 app.use('/api/sellers', sellerRoutes);
+app.use("/api/wallet", walletRoutes);
+app.use("/api/buyer", buyerRoutes);
+
 
 // Error handler
 app.use(errorHandler);

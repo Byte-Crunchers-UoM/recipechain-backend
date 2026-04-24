@@ -1,19 +1,31 @@
-import express from 'express';
-import { 
-  createBuyer, 
-  getAllBuyers, 
-  getBuyerById, 
-  updateBuyer, 
-  deleteBuyer 
-} from '../controllers/buyerController.js';
+import express from "express";
+import multer from "multer";
+import {
+  createBuyer,
+  getAllBuyers,
+  getBuyerById,
+  updateBuyer,
+  deleteBuyer,
+  getMyBuyerProfile,
+  updateMyBuyerProfile,
+} from "../controllers/buyerController.js";
+import { requireSession } from "../middleware/sessionMiddleware.js";
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
-// CRUD Routes for testing
-router.post('/buyers', createBuyer);       // Create
-router.get('/buyers', getAllBuyers);       // Read All
-router.get('/buyers/:id', getBuyerById);   // Read Single
-router.put('/buyers/:id', updateBuyer);    // Update
-router.delete('/buyers/:id', deleteBuyer); // Delete
+router.get("/me/profile", requireSession, getMyBuyerProfile);
+router.patch(
+  "/me/profile",
+  requireSession,
+  upload.single("profilePhoto"),
+  updateMyBuyerProfile
+);
+
+router.post("/", createBuyer);
+router.get("/", getAllBuyers);
+router.get("/:id", getBuyerById);
+router.put("/:id", updateBuyer);
+router.delete("/:id", deleteBuyer);
 
 export default router;
