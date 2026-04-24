@@ -1,5 +1,6 @@
 import express from 'express';
-import multer from 'multer';
+import multer from "multer";
+
 import { 
         addRecipe,
         getRecipeById,
@@ -9,6 +10,7 @@ import {
  } from '../controllers/recipeController.js';
 import { validateRecipe } from '../middleware/inputValidators.js';
 
+const upload = multer({ dest: "uploads/" });
 
 const router = express.Router();
 

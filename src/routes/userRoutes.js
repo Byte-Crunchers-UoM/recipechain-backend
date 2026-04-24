@@ -9,7 +9,7 @@ import {
   getMe,
 } from "../controllers/userController.js";
 
-import validateUser from "../middleware/inputValidators.js";
+import { validateUser } from "../middleware/inputValidators.js";
 import { protectAdmin } from "../middleware/authMiddleware.js";
 import { requireSession } from "../middleware/sessionMiddleware.js";
 
