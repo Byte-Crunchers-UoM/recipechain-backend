@@ -2,7 +2,9 @@ import {
   addRecipeModel,
   getRecipeByIdModel,
   updateRecipeModel,
-  deleteRecipeModel
+  deleteRecipeModel,
+  getAllRecipesModel,
+  getFilteredRecipesModel
 } from "../models/recipesModel.js";
 
 class RecipeService {
@@ -22,7 +24,14 @@ class RecipeService {
   async deleteRecipe(id) {
     return await deleteRecipeModel(id);
   }
-
+  async getAllRecipes(){
+        const recipes = await getAllRecipesModel();
+        return recipes;
+    }
+  async getFilteredrecipes(filters){
+    const recipes = await getFilteredRecipesModel(filters);
+    return recipes;
+  }
 }
 
 export default new RecipeService();

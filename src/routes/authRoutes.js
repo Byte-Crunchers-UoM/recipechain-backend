@@ -1,19 +1,29 @@
-import express from 'express';
-import { adminLogin } from '../controllers/authController.js';
-import { protectAdmin } from '../middleware/authMiddleware.js'; // <-- 1. Middleware එක import කරන්න
+import express from "express";
+import {
+  adminLogin,
+  syncWeb3AuthUser,
+  logout,
+} from "../controllers/authController.js";
+import { protectAdmin } from "../middleware/authMiddleware.js";
+import { requireWeb3Auth } from "../middleware/web3authMiddleware.js";
 
 const router = express.Router();
 
-// Login Route
-router.post('/admin-login', adminLogin);
+// Admin login
+router.post("/admin-login", adminLogin);
 
-// 2. Create Test Route ( Access only Admin) ---
-router.get('/admin-dashboard-stats', protectAdmin, (req, res) => {
-    res.json({ 
-        message: "Can you see admin dashboard, Middleware is work!", 
-        user: req.user.email 
-    });
+// Web3Auth sync (sets cookie session)
+router.post("/web3auth/sync", requireWeb3Auth, syncWeb3AuthUser);
+
+// Logout (clears cookie)
+router.post("/logout", logout);
+
+// Admin test route
+router.get("/admin-dashboard-stats", protectAdmin, (req, res) => {
+  res.json({
+    message: "you can see admin dashboard, Middleware is work!",
+    user: req.user.email,
+  });
 });
-// -------------------------------------------------------------
 
 export default router;

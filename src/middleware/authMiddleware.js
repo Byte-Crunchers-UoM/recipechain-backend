@@ -1,5 +1,3 @@
-// src/middleware/authMiddleware.js
-
 import { supabase } from '../config/supabase.js';
 
 export const protectAdmin = async (req, res, next) => {
@@ -14,28 +12,29 @@ export const protectAdmin = async (req, res, next) => {
       // "separate token from Bearer <token>" 
       token = req.headers.authorization.split(' ')[1];
 
-      // 2.Token  Verify by supabase
+      // 2. Token Verify by supabase
       const { data: { user }, error } = await supabase.auth.getUser(token);
 
       if (error || !user) {
         return res.status(401).json({ message: "(Not Authorized)" });
       }
 
-      // 3. Check user role
-      const { data: profileData, error: profileError } = await supabase
-        .from('users')
+      // 3. Check user role in the parent 'users' table
+      const { data: userData, error: userError } = await supabase
+        .from('users') 
         .select('role')
-        .eq('id', user.id)
+        .eq('user_id', user.id) 
         .single();
 
-      if (profileError || !profileData || profileData.role !== 'admin') {
+      // If there is an error, no data, or the role is not 'admin', kick them out
+      if (userError || !userData || userData.role !== 'admin') {
         return res.status(403).json({ message: " (Admin Only)" });
       }
 
-      // 4. is all correct,add  User details to req 
+      // 4. is all correct, add User details to req 
       req.user = user;
-      req.adminRole = profileData.role;
-      next();
+      req.adminRole = userData.role;
+      next(); // This is the VIP pass that lets them through to the dashboard!
 
     } catch (error) {
       console.error("Middleware Error:", error);

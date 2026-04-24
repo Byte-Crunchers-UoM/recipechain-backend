@@ -4,12 +4,13 @@ import {
         addRecipe,
         getRecipeById,
         updateRecipe,
-        deleteRecipe
+        deleteRecipe,
+        getFilteredRecipes
  } from '../controllers/recipeController.js';
 import { validateRecipe } from '../middleware/inputValidators.js';
 
+
 const router = express.Router();
-const upload = multer({ dest: 'uploads/' });
 
 //CREATE
 router.post('/', upload.single('image'), validateRecipe, addRecipe);
