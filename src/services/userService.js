@@ -1,5 +1,3 @@
-// src/services/userService.js
-
 import {
   createUserModel,
   getUserByIdModel,
@@ -10,6 +8,7 @@ import {
   upsertWeb3AuthUserModel,
   setUserRoleModel,
   ensureBuyerRowModel,
+  ensureSellerRowModel,
   getUserByUserIdModel,
   setUserRoleByUserIdModel,
 } from "../models/userModel.js";
@@ -121,8 +120,12 @@ class UserService {
 
     const updatedUser = await setUserRoleModel(email.toLowerCase(), role);
 
-    if (role === "buyer" && typeof ensureBuyerRowModel === "function") {
+    if (role === "buyer") {
       await ensureBuyerRowModel(updatedUser.user_id, email.toLowerCase());
+    }
+
+    if (role === "seller") {
+      await ensureSellerRowModel(updatedUser.user_id);
     }
 
     return updatedUser;
@@ -143,8 +146,12 @@ class UserService {
 
     const updatedUser = await setUserRoleByUserIdModel(userId, role);
 
-    if (role === "buyer" && typeof ensureBuyerRowModel === "function") {
+    if (role === "buyer") {
       await ensureBuyerRowModel(updatedUser.user_id, email.toLowerCase());
+    }
+
+    if (role === "seller") {
+      await ensureSellerRowModel(updatedUser.user_id);
     }
 
     return updatedUser;

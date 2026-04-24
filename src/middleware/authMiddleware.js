@@ -1,48 +1,92 @@
-import { supabase } from '../config/supabase.js';
+// src/middleware/authMiddleware.js
 
-export const protectAdmin = async (req, res, next) => {
+import { supabase } from "../config/supabase.js";
+
+/*
+------------------------------------------
+Protect logged-in users (seller/buyer)
+------------------------------------------
+*/
+export const protect = async (req, res, next) => {
   let token;
 
-  // 1. check is header has token (Like asBearer Token)
   if (
     req.headers.authorization &&
-    req.headers.authorization.startsWith('Bearer')
+    req.headers.authorization.startsWith("Bearer")
   ) {
     try {
-      // "separate token from Bearer <token>" 
-      token = req.headers.authorization.split(' ')[1];
+      token = req.headers.authorization.split(" ")[1];
 
-      // 2. Token Verify by supabase
-      const { data: { user }, error } = await supabase.auth.getUser(token);
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser(token);
 
       if (error || !user) {
-        return res.status(401).json({ message: "(Not Authorized)" });
+        return res.status(401).json({ message: "Not authorized" });
       }
 
-      // 3. Check user role in the parent 'users' table
-      const { data: userData, error: userError } = await supabase
-        .from('users') 
-        .select('role')
-        .eq('user_id', user.id) 
-        .single();
-
-      // If there is an error, no data, or the role is not 'admin', kick them out
-      if (userError || !userData || userData.role !== 'admin') {
-        return res.status(403).json({ message: " (Admin Only)" });
-      }
-
-      // 4. is all correct, add User details to req 
+      // attach user to request
       req.user = user;
-      req.adminRole = userData.role;
-      next(); // This is the VIP pass that lets them through to the dashboard!
 
+      next();
     } catch (error) {
-      console.error("Middleware Error:", error);
-      return res.status(401).json({ message: "Token check is failed" });
+      console.error("Auth Middleware Error:", error);
+      return res.status(401).json({ message: "Token verification failed" });
     }
   }
 
   if (!token) {
-    return res.status(401).json({ message: "Token is not found, please Login." });
+    return res.status(401).json({ message: "Token not found, please login" });
+  }
+};
+
+/*
+------------------------------------------
+Protect ADMIN routes
+------------------------------------------
+*/
+export const protectAdmin = async (req, res, next) => {
+  let token;
+
+  if (
+    req.headers.authorization &&
+    req.headers.authorization.startsWith("Bearer")
+  ) {
+    try {
+      token = req.headers.authorization.split(" ")[1];
+
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser(token);
+
+      if (error || !user) {
+        return res.status(401).json({ message: "Not authorized" });
+      }
+
+      // check role in users table
+      const { data: profileData, error: profileError } = await supabase
+        .from("users")
+        .select("role")
+        .eq("user_id", user.id)
+        .single();
+
+      if (profileError || !profileData || profileData.role !== "admin") {
+        return res.status(403).json({ message: "Admin only route" });
+      }
+
+      req.user = user;
+      req.adminRole = profileData.role;
+
+      next();
+    } catch (error) {
+      console.error("Admin Middleware Error:", error);
+      return res.status(401).json({ message: "Token verification failed" });
+    }
+  }
+
+  if (!token) {
+    return res.status(401).json({ message: "Token not found, please login" });
   }
 };
