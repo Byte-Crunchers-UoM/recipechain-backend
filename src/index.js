@@ -14,6 +14,7 @@ const PORT = process.env.PORT || 4000;
 
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Health check route
 app.get('/', (req, res) => {
@@ -60,6 +61,6 @@ app.use(errorHandler);
 testConnection();
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running on port ${PORT} successfully`);
-});
+});   
