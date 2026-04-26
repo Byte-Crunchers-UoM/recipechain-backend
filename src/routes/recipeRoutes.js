@@ -1,35 +1,51 @@
-import express from 'express'
-import { getAllRecipes,
-        addRecipe,
-        getRecipeById,
-        updateRecipe,
-        deleteRecipe,
-        getFilteredRecipes,
-        searchRecipes
- } from '../controllers/recipeController.js';
+import express from 'express';
+import { 
+    getAllRecipes,
+    addRecipe,
+    getRecipeById,
+    updateRecipe,
+    deleteRecipe,
+    getFilteredRecipes,
+    searchRecipes,
+    unlockRecipe 
+} from '../controllers/recipeController.js';
 
+import { requireSession, optionalSession } from '../middleware/sessionmiddleware.js';
 
 const router = express.Router();
-//search
-router.get('/search', searchRecipes);
 
-//Get all recipes
-router.get("/",getAllRecipes);
+// --- 1. STATIC ROUTES (These should be first) ---
 
-//Filter
-router.get("/filter",getFilteredRecipes)
+// Search (Use optionalSession so the Purchased badge is visible in the search as well)
+router.get('/search', optionalSession, searchRecipes);
+
+// Filter (Use optionalSession)
+router.get("/filter", optionalSession, getFilteredRecipes);
+
+// Unlock Recipe (A Session is strictly required for payments)
+router.post('/unlock', requireSession, unlockRecipe);
 
 
-//CREATE
-router.post('/', addRecipe);
+// --- 2. DYNAMIC ROUTES (Routes using an ID should come after) ---
 
-//READ
-router.get('/:id',getRecipeById);
+// READ BY ID
+// Since optionalSession is here, it will unlock the recipe for logged-in users
+router.get('/:id', optionalSession, getRecipeById);
 
-//UPDATE
-router.put('/:id', updateRecipe);
+// GET ALL RECIPES
+// Put this at the very bottom, so it works if the others don't match
+router.get("/", optionalSession, getAllRecipes);
 
-//DELETE
-router.delete('/:id', deleteRecipe);
+
+// --- 3. WRITE / PROTECTED ROUTES ---
+
+// CREATE
+router.post('/', requireSession, addRecipe);
+
+// UPDATE
+router.put('/:id', requireSession, updateRecipe);
+
+// DELETE
+router.delete('/:id', requireSession, deleteRecipe);
 
 export default router;

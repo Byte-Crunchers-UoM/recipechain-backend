@@ -1,6 +1,6 @@
 import { supabase } from "../config/supabase.js";
 
-//Get All Recipes
+// Get All Recipes
 export const getAllRecipesModel = async()=>{
     const{ data,error } = await supabase
     .from ('recipes')
@@ -11,7 +11,7 @@ export const getAllRecipesModel = async()=>{
     return data;
 };
 
-//Recipe Filtering
+// Recipe Filtering
   export const getFilteredRecipesModel = async (filters) => {
   const { difficulty_level, goal, dietary_tags, cuisine, meal_type, occasion } = filters;
   
@@ -39,7 +39,8 @@ export const getAllRecipesModel = async()=>{
   if (error) throw error;
   return data;
 };
-//search Recipes
+
+// Search Recipes
 export const searchRecipesModel = async (searchTerm) => {
   const { data, error } = await supabase
     .from('recipes')
@@ -53,7 +54,8 @@ export const searchRecipesModel = async (searchTerm) => {
   if (error) throw error;
   return data;
 };
-//CREATE
+
+// CREATE
 export const addRecipeModel = async (recipeData) =>{
     const {data,error} = await supabase
     .from("recipes")
@@ -65,7 +67,7 @@ export const addRecipeModel = async (recipeData) =>{
     return data;
 };
 
-//READ BY ID
+// READ BY ID
 export const getRecipeByIdModel = async (id) => {
     const {data,error} = await supabase
     .from("recipes")
@@ -99,4 +101,74 @@ export const deleteRecipeModel = async (id) => {
 
   if (error) throw error;
   return true;
+};
+
+// (Add this below the existing code)
+
+// Get the Recipe along with the Seller's details
+export const getRecipeWithSellerModel = async (recipeId) => {
+    const { data, error } = await supabase
+        .from('recipes')
+        .select('*, sellers(user_id)') 
+        .eq('recipe_id', recipeId) 
+        .single();
+    if (error) throw error;
+    return data;
+};
+
+// Save the Payment record
+export const savePaymentRecordModel = async (paymentData) => {
+    const { data, error } = await supabase
+        .from('payments') 
+        .insert([paymentData])
+        .select('payment_id') // Get the newly created ID
+        .single();
+    if (error) throw error;
+    return data;
+};
+
+// Save the Recipe Purchase (Access) record
+export const saveRecipePurchaseModel = async (purchaseData) => {
+    const { data, error } = await supabase
+        .from('recipe_purchases')
+        .insert([purchaseData]);
+    if (error) throw error;
+    return data;
+};
+
+// Get the Seller's Wallet Address
+export const getSellerWalletModel = async (sellerId) => {
+    const { data, error } = await supabase
+        .from('users')
+        .select('wallet_address')
+        .eq('user_id', sellerId)
+        .single();
+    if (error) throw error;
+    return data;
+};
+
+// Check if a User has purchased a Recipe
+export const checkPurchaseStatusModel = async (buyerId, recipeId) => {
+    const { data, error } = await supabase
+        .from('recipe_purchases')
+        .select('purchase_id')
+        .eq('buyer_id', buyerId)
+        .eq('recipe_id', recipeId)
+        .single();
+    
+    if (error && error.code !== 'PGRST116') { // PGRST116 means "No rows found"
+        throw error;
+    }
+    return !!data; // Returns true if data exists, false otherwise
+};
+
+// Get the IDs of the Recipes purchased by a User
+export const getUserPurchasesModel = async (userId) => {
+    const { data, error } = await supabase
+        .from('recipe_purchases')
+        .select('recipe_id')
+        .eq('buyer_id', userId);
+    
+    if (error) throw error;
+    return data || []; // Ex: [{ recipe_id: '123' }, { recipe_id: '456' }]
 };

@@ -1,3 +1,4 @@
+// src/middleware/authMiddleware.js
 import { supabase } from '../config/supabase.js';
 
 export const protectAdmin = async (req, res, next) => {
