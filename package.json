@@ -24,6 +24,7 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",
     "pg": "^8.16.3",
+    "react-confetti": "^6.4.0",
     "streamifier": "^0.1.1",
     "stripe": "^22.1.0",
     "xrpl": "^4.6.0",
