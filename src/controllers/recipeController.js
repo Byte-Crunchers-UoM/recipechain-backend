@@ -43,7 +43,14 @@ export const searchRecipes = async (req, res, next) => {
     try {
         const searchTerm = req.query.q;
         const userId = req.user?.user_id || req.user?.id;
-        const data = await recipeService.searchRecipes(searchTerm);
+        
+        // 🛠️ වචනයක් type කරලා නැත්නම් හිස් Array එකක් යවන්න (නැත්නම් Database Error එකක් එනවා)
+        if (!searchTerm) {
+            return res.status(200).json({ success: true, count: 0, data: [] });
+        }
+
+        // 🛠️ මෙතනට userId එකත් අනිවාර්යයෙන්ම දෙන්න ඕනේ!
+        const data = await recipeService.searchRecipes(searchTerm, userId);
         
         res.status(200).json({
             success: true,
