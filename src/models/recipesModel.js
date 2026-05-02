@@ -1,64 +1,63 @@
 import { supabase } from "../config/supabase.js";
 
-//Get All Recipes
-export const getAllRecipesModel = async()=>{
-    const{ data,error } = await supabase
-    .from ('recipes')
-    .select('title,description,price')
-    .order('created_at',{ascending:false});
-    if (error) throw error 
-    return data;
+// Get All Recipes 
+export const getAllRecipesModel = async () => {
+  const { data, error } = await supabase
+    .from('recipes')
+    .select('*') // Changed from join to '*' for safety
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error("Supabase Error:", error.message);
+    throw error;
+  }
+  
+  
+  return data.map(recipe => ({
+    ...recipe,
+    full_name: recipe.chef_id ? `Chef (${recipe.chef_id.substring(0, 5)})` : 'RecipeChain User',
+    price_xrp: recipe.price 
+  }));
+
 };
 
-//Filter Recipes
-export const getFilteredRecipesModel = async (filters)=>{
-  const {goal, dietary, cuisine, meal, occassion} = filters;
-  let query = supabase
-  .from('recipes')
-  .select(`recipe_id,
-    title,
-    description,
-    price,
-    image_url,
-    rating_avg,
-    tags:tag_id!inner(*)
-    `)
-  .eq('status','published');
-
-  if (goal) query = query.eq('tags.goal',goal);
-  if (dietary) query = query.eq('tags.dietary_tags', dietary);
-  if (cuisine) query = query.eq('tags.cuisine', cuisine);
-  if (meal) query = query.eq('tags.meal_type',meal);
-  if (occassion) query =query.eq('tags.occassion',occassion);
-  const { data,error } = await query.order('created_at',{ascending:'false'});
+// Filter Recipes 
+export const getFilteredRecipesModel = async (filters) => {
+  const { data, error } = await supabase
+    .from('recipes')
+    .select('*')
+    .order('created_at', { ascending: false });
 
   if (error) throw error;
 
-  return data;
+  return data.map(recipe => ({
+    ...recipe,
+    full_name: 'RecipeChain User'
+  }));
 };
 
-//CREATE
-export const addRecipeModel = async (recipeData) =>{
-    const {data,error} = await supabase
+// CREATE
+export const addRecipeModel = async (recipeData) => {
+  const { data, error } = await supabase
     .from("recipes")
     .insert([recipeData])
     .select()
     .single();
 
-    if (error) throw error;
-    return data;
+  if (error) throw error;
+  return data;
 };
 
-//READ BY ID
+// READ BY ID
 export const getRecipeByIdModel = async (id) => {
-    const {data,error} = await supabase
+  const { data, error } = await supabase
     .from("recipes")
     .select("*")
-    .eq("recipe_id",id)
+    .eq("recipe_id", id)
     .single();
 
-    if(error) throw error;
-    return data;
+  if (error) throw error;
+  return data;
 };
 
 // UPDATE
@@ -66,7 +65,7 @@ export const updateRecipeModel = async (id, updateData) => {
   const { data, error } = await supabase
     .from("recipes")
     .update(updateData)
-    .eq("id", id)
+    .eq("recipe_id", id)
     .select()
     .single();
 
@@ -79,7 +78,7 @@ export const deleteRecipeModel = async (id) => {
   const { error } = await supabase
     .from("recipes")
     .delete()
-    .eq("id", id);
+    .eq("recipe_id", id);
 
   if (error) throw error;
   return true;

@@ -5,7 +5,8 @@ import {
   getAllSellers, 
   getSellerById, 
   updateSeller, 
-  deleteSeller 
+  deleteSeller,
+  verifySeller
 } from '../controllers/sellerController.js';
 
 const router = express.Router();
@@ -15,5 +16,6 @@ router.get('/', getAllSellers);
 router.get('/:id', getSellerById);
 router.put('/:id', updateSeller);
 router.delete('/:id', deleteSeller);
+router.patch('/:id/verify', verifySeller);
 
 export default router;

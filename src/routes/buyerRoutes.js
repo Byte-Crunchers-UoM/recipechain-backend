@@ -4,16 +4,18 @@ import {
   getAllBuyers, 
   getBuyerById, 
   updateBuyer, 
-  deleteBuyer 
+  deleteBuyer,
+  updateBuyerStatus 
 } from '../controllers/buyerController.js';
 
 const router = express.Router();
 
 // CRUD Routes for testing
-router.post('/buyers', createBuyer);       // Create
-router.get('/buyers', getAllBuyers);       // Read All
-router.get('/buyers/:id', getBuyerById);   // Read Single
-router.put('/buyers/:id', updateBuyer);    // Update
-router.delete('/buyers/:id', deleteBuyer); // Delete
+router.post('/', createBuyer);       // Create
+router.get('/', getAllBuyers);       // Read All
+router.get('/:id', getBuyerById);   // Read Single
+router.put('/:id', updateBuyer);    // Update
+router.delete('/:id', deleteBuyer); // Delete
+router.patch('/:id/status', updateBuyerStatus); // Update Status
 
 export default router;

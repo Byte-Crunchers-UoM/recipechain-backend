@@ -3,7 +3,6 @@ import crypto from 'crypto';
 
 // 1. CREATE: Manually add a buyer for testing
 export const createBuyer = async (req, res) => {
-  // REMOVED 'password' from here!
   const { email, wallet_address, display_name, bio } = req.body; 
   const testUserId = crypto.randomUUID(); 
 
@@ -23,7 +22,8 @@ export const createBuyer = async (req, res) => {
       bio: bio || '',
       total_purchases: 0,
       total_spent_xrp: 0,
-      account_balance: 0 
+      account_balance: 0,
+      status: 'active' // Default status
     }]);
 
     if (buyerError) throw buyerError;
@@ -41,10 +41,9 @@ export const createBuyer = async (req, res) => {
 // 2. READ: Get all buyers (Two-Step Fetch)
 export const getAllBuyers = async (req, res) => {
   try {
-    // Step A: Get all buyers 
     const { data: buyers, error: buyerError } = await supabase
         .from('buyers')
-        .select('user_id, display_name, total_purchases, total_spent_xrp, bio, profile_picture, account_balance');
+        .select('user_id, display_name, status, total_purchases, total_spent_xrp, bio, profile_picture, account_balance');
         
     if (buyerError) throw buyerError;
 
@@ -52,7 +51,6 @@ export const getAllBuyers = async (req, res) => {
       return res.status(200).json({ success: true, data: [] });
     }
 
-    // Step B: Get matching user data
     const buyerIds = buyers.map(b => b.user_id);
     const { data: users, error: userError } = await supabase
       .from('users')
@@ -61,17 +59,10 @@ export const getAllBuyers = async (req, res) => {
       
     if (userError) throw userError;
 
-    // Step C: Combine them perfectly
     const combinedData = buyers.map(buyer => {
       const matchingUser = users.find(u => u.user_id === buyer.user_id);
       return {
-        user_id: buyer.user_id,
-        display_name: buyer.display_name,
-        total_purchases: buyer.total_purchases,
-        total_spent_xrp: buyer.total_spent_xrp,
-        account_balance: buyer.account_balance, // <--- Pulled from buyers table
-        bio: buyer.bio,
-        profile_picture: buyer.profile_picture,
+        ...buyer,
         users: matchingUser ? {
           email: matchingUser.email,
           wallet_address: matchingUser.wallet_address
@@ -88,14 +79,21 @@ export const getAllBuyers = async (req, res) => {
 // 3. READ: Get a single buyer by ID
 export const getBuyerById = async (req, res) => {
   const { id } = req.params;
+  
   try {
+    // ADDED 'status' here so the profile page can see if they are blocked
     const { data: buyerData, error: buyerError } = await supabase
       .from('buyers')
-      .select('user_id, display_name, total_purchases, total_spent_xrp, bio, profile_picture, account_balance')
+      .select('user_id, display_name, status, total_purchases, total_spent_xrp, bio, profile_picture, account_balance')
       .eq('user_id', id)
       .single();
 
-    if (buyerError) throw buyerError;
+      
+
+    if (buyerError) {
+      
+      throw buyerError;
+    }
 
     const { data: userData, error: userError } = await supabase
       .from('users')
@@ -105,12 +103,10 @@ export const getBuyerById = async (req, res) => {
 
     if (userError) throw userError;
 
-    const combinedData = {
-      ...buyerData,
-      users: userData
-    };
-
-    return res.status(200).json({ success: true, data: combinedData });
+    return res.status(200).json({ 
+      success: true, 
+      data: { ...buyerData, users: userData } 
+    });
   } catch (error) {
     return res.status(404).json({ success: false, message: "Buyer not found" });
   }
@@ -131,6 +127,32 @@ export const updateBuyer = async (req, res) => {
     if (error) throw error;
     return res.status(200).json({ success: true, message: "Buyer updated", data });
   } catch (error) {
+    return res.status(500).json({ success: false, errorDetails: error.message });
+  }
+};
+
+// --- NEW: UPDATE STATUS (Block/Unblock) ---
+export const updateBuyerStatus = async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body; // Expecting 'blocked' or 'active'
+
+  try {
+    const { data, error } = await supabase
+      .from('buyers')
+      .update({ status: status })
+      .eq('user_id', id)
+      .select();
+
+    if (error) throw error;
+    if (!data || data.length === 0) throw new Error("Buyer not found");
+
+    return res.status(200).json({ 
+      success: true, 
+      message: `Buyer status changed to ${status}`,
+      data: data[0]
+    });
+  } catch (error) {
+    console.error("DEBUG ERROR:", error);
     return res.status(500).json({ success: false, errorDetails: error.message });
   }
 };

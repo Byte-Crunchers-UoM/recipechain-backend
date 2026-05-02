@@ -24,13 +24,16 @@ class RecipeService {
   async deleteRecipe(id) {
     return await deleteRecipeModel(id);
   }
+
   async getAllRecipes(){
-        const recipes = await getAllRecipesModel();
-        return recipes;
-    }
-  async getFilteredrecipes(filters){
-    const recipes = await getFilteredRecipesModel(filters);
-    return recipes;
+    // This will now successfully return the recipe_id and full_name 
+    // because of the changes we made to your Model earlier.
+    return await getAllRecipesModel();
+  }
+
+  // FIXED: Changed 'r' to 'R' to match standard naming and Controller calls
+  async getFilteredRecipes(filters){ 
+    return await getFilteredRecipesModel(filters);
   }
 }
 
