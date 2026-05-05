@@ -1,3 +1,5 @@
+//src/models/savedRecipeModel.js
+
 import { supabase } from "../config/supabase.js";
 
 // Get All Recipes
@@ -6,7 +8,9 @@ export const getAllRecipesModel = async()=>{
     .from ('recipes')
     .select(`*,
       sellers!inner(full_name)`)
+    //.eq('approval_status', 'published')
     .order('created_at',{ascending:false});
+    
     if (error) throw error 
     return data;
 };
@@ -25,7 +29,7 @@ export const getAllRecipesModel = async()=>{
       ),
       tags:tag_id!inner (*)
     `)
-    .eq('status', 'published');
+    .eq('approval_status', 'published');
 
   if(difficulty_level) query = query.ilike('difficulty_level', difficulty_level)
   if (goal) query = query.ilike('tags.goal', goal);
