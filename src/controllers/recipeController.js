@@ -1,3 +1,6 @@
+//src/recipeController.js
+import { supabase } from '../config/supabase.js'; 
+
 import recipeService from "../services/recipeService.js";
 
 const sendResponse = (res, statusCode,success,message,data = null)=>{
@@ -22,7 +25,7 @@ export const getFilteredRecipes = async (req, res, next) => {
         if (req.query.occasion) filters.occasion = req.query.occasion; 
         
         console.log("Filters reaching the backend:", filters); 
-        const recipes = await recipeService.getFilteredrecipes(filters);
+        const recipes = await recipeService.getFilteredrecipes(filters, userId);
         
         if (!recipes || recipes.length === 0) {
             return sendResponse(res, 200, true, 'No recipes found matching your filters', []);
@@ -39,7 +42,13 @@ export const getFilteredRecipes = async (req, res, next) => {
 export const searchRecipes = async (req, res, next) => {
     try {
         const searchTerm = req.query.q;
-                const data = await recipeService.searchRecipes(searchTerm);
+        const userId = req.user?.user_id || req.user?.id;
+        
+        if (!searchTerm) {
+            return res.status(200).json({ success: true, count: 0, data: [] });
+        }
+
+        const data = await recipeService.searchRecipes(searchTerm, userId);
         
         res.status(200).json({
             success: true,

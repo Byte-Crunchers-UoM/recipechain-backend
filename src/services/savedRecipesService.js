@@ -1,31 +1,37 @@
 import { 
     addsavedRecipesModel, 
     deleteSavedRecipeModel, 
-    getSavedRecipeModel,
-    getUserIdByEmailModel 
+    getSavedRecipeModel
 } from "../models/savedRecipesModel.js";
 
-class savedRecipeService {
+class SavedRecipeService {
     
-    async getSavedRecipes(email) {
-        try {
-            const user_id = await getUserIdByEmailModel(email);
-            return await getSavedRecipeModel(user_id);
-        } catch (error) {
-            if (error.message === "User not found") return [];
-            throw error;
-        }
+    // 🛠️ CHANGED: Accepts userId instead of email
+    async getSavedRecipes(userId) {
+        // No more email lookup! Go straight to the data:
+        const rawData = await getSavedRecipeModel(userId);
+
+        if (!rawData || rawData.length === 0) return [];
+
+        const formattedCartItems = rawData.map(item => ({
+            saved_id: item.saved_id,
+            recipe_id: item.recipe_id,
+            created_at: item.created_at,
+            ...(item.recipes || {}) 
+        }));
+
+        return formattedCartItems;
     }
 
-    async addSavedRecipes(email, recipe_id) {
-        const user_id = await getUserIdByEmailModel(email);
-        return await addsavedRecipesModel(user_id, recipe_id);
+    // 🛠️ CHANGED: Accepts userId instead of email
+    async addSavedRecipes(userId, recipe_id) {
+        return await addsavedRecipesModel(userId, recipe_id);
     }
 
-    async deleteSavedRecipe(email, recipe_id) {
-        const user_id = await getUserIdByEmailModel(email);
-        return await deleteSavedRecipeModel(user_id, recipe_id);
+    // 🛠️ CHANGED: Accepts userId instead of email
+    async deleteSavedRecipe(userId, recipe_id) {
+        return await deleteSavedRecipeModel(userId, recipe_id);
     }
 }
 
-export default new savedRecipeService();
+export default new SavedRecipeService();
