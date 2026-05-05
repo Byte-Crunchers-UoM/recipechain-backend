@@ -25,7 +25,6 @@ export const getFilteredRecipes = async (req, res, next) => {
         const userId = req.user?.user_id || req.user?.id;
 
         console.log("Filters reaching the backend:", filters); 
-        // 🛠️ 2. Send the userId to the Service as well
         const recipes = await recipeService.getFilteredrecipes(filters, userId);
         
         if (!recipes || recipes.length === 0) {
@@ -43,7 +42,12 @@ export const searchRecipes = async (req, res, next) => {
     try {
         const searchTerm = req.query.q;
         const userId = req.user?.user_id || req.user?.id;
-        const data = await recipeService.searchRecipes(searchTerm);
+        
+        if (!searchTerm) {
+            return res.status(200).json({ success: true, count: 0, data: [] });
+        }
+
+        const data = await recipeService.searchRecipes(searchTerm, userId);
         
         res.status(200).json({
             success: true,

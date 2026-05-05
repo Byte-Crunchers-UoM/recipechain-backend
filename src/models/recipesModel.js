@@ -40,17 +40,13 @@ export const getAllRecipesModel = async()=>{
   return data;
 };
 
-// Search Recipes
+// Search Recipes (Updated for better partial matching)
 export const searchRecipesModel = async (searchTerm) => {
   const { data, error } = await supabase
     .from('recipes')
-    .select('*, sellers(full_name)')
-    .eq('status', 'published')
-    .textSearch('title', searchTerm, {
-      type: 'websearch',
-      config: 'english'
-    });
-
+    .select('*, sellers:chef_id(full_name, display_name)') 
+    .eq('approval_status', 'published')
+    .ilike('title', `%${searchTerm}%`); 
   if (error) throw error;
   return data;
 };
@@ -159,7 +155,7 @@ export const checkPurchaseStatusModel = async (buyerId, recipeId) => {
     if (error && error.code !== 'PGRST116') { // PGRST116 means "No rows found"
         throw error;
     }
-    return !!data; // Returns true if data exists, false otherwise
+    return !!data; 
 };
 
 // Get the IDs of the Recipes purchased by a User
@@ -170,5 +166,5 @@ export const getUserPurchasesModel = async (userId) => {
         .eq('buyer_id', userId);
     
     if (error) throw error;
-    return data || []; // Ex: [{ recipe_id: '123' }, { recipe_id: '456' }]
+    return data || []; 
 };
