@@ -4,6 +4,10 @@ import { uploadBufferToCloudinary } from "../utils/uploadToCloudinary.js";
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 const ALLOWED_FILE_TYPES = ["image/jpeg", "image/png", "application/pdf"];
 
+/**
+ * Assigns or retrieves the seller role for a user in the project.
+ * Ensures that a user can act as a seller in the marketplace.
+ */
 const selectSellerRole = async ({ userId }) => {
   const existingSeller = await sellerModel.findSellerByUserId(userId);
 
@@ -16,14 +20,26 @@ const selectSellerRole = async ({ userId }) => {
   });
 };
 
+/**
+ * Cleans up and normalizes the format of a National Identity Card (NIC) number.
+ * Used to prevent duplicates and ensure standard data storage for KYC.
+ */
 const normalizeNic = (value = "") => {
   return value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
 };
 
+/**
+ * Cleans up and normalizes the format of a phone number.
+ * Used to prevent duplicates and standardize contact information for KYC.
+ */
 const normalizePhone = (value = "") => {
   return value.replace(/[^\d+]/g, "").trim();
 };
 
+/**
+ * Validates uploaded KYC documents (like ID front/back) for size and format.
+ * Protects the platform from invalid or excessively large file uploads.
+ */
 const validateDocumentFile = (file, label) => {
   if (!file) {
     throw new Error(`${label} is required`);
@@ -38,6 +54,11 @@ const validateDocumentFile = (file, label) => {
   }
 };
 
+/**
+ * Uploads a seller's KYC document to Cloudinary cloud storage.
+ * Generates a safe file name and attaches project-specific metadata/tags
+ * for easier document management.
+ */
 const uploadKycDocument = async ({
   file,
   userId,
@@ -75,6 +96,11 @@ const uploadKycDocument = async ({
   };
 };
 
+/**
+ * Generates a standard duplicate error object when a seller tries to submit
+ * KYC using an already registered NIC or phone number.
+ * Keeps error messaging consistent on the platform.
+ */
 const buildDuplicateIdentityError = ({ field, status }) => {
   const safeStatus = status || "pending";
 
@@ -107,6 +133,11 @@ const buildDuplicateIdentityError = ({ field, status }) => {
   return error;
 };
 
+/**
+ * Core business logic for submitting a seller's KYC application.
+ * Validates input, uploads required documents, checks for duplicates,
+ * and updates the seller's status to pending review.
+ */
 const submitKyc = async ({ userId, body, files }) => {
   const {
     fullName,
@@ -235,6 +266,11 @@ const submitKyc = async ({ userId, body, files }) => {
   return updatedSeller;
 };
 
+/**
+ * Retrieves the current KYC verification status of a seller.
+ * Used to determine if a seller is allowed to publish recipes
+ * or accept XRPL payments.
+ */
 const getKycStatus = async (userId) => {
   const seller = await sellerModel.findSellerByUserId(userId);
 
@@ -245,6 +281,10 @@ const getKycStatus = async (userId) => {
   return await sellerModel.getKycStatusByUserId(userId);
 };
 
+/**
+ * Marks the KYC approval notification page as seen by the user.
+ * Helps manage the UI state so the user isn't repeatedly prompted.
+ */
 const markKycApprovalPageSeen = async (userId) => {
   const seller = await sellerModel.findSellerByUserId(userId);
 

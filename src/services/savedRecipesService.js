@@ -6,7 +6,10 @@ import {
 
 class SavedRecipeService {
     
-    // 🛠️ CHANGED: Accepts userId instead of email
+    /**
+     * Retrieves all recipes a user has saved/bookmarked.
+     * Powers the "My Saved Recipes" functionality for end-users.
+     */
     async getSavedRecipes(userId) {
         // No more email lookup! Go straight to the data:
         const rawData = await getSavedRecipeModel(userId);
@@ -23,12 +26,18 @@ class SavedRecipeService {
         return formattedCartItems;
     }
 
-    // 🛠️ CHANGED: Accepts userId instead of email
+    /**
+     * Adds a specific recipe to a user's saved/bookmarked list.
+     * Enables users to curate their favorite recipes for later.
+     */
     async addSavedRecipes(userId, recipe_id) {
         return await addsavedRecipesModel(userId, recipe_id);
     }
 
-    // 🛠️ CHANGED: Accepts userId instead of email
+    /**
+     * Removes a recipe from a user's saved/bookmarks list.
+     * Allows users to manage and unsave recipes.
+     */
     async deleteSavedRecipe(userId, recipe_id) {
         return await deleteSavedRecipeModel(userId, recipe_id);
     }

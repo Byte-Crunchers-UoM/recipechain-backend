@@ -3,11 +3,16 @@ import xrplService from "../services/xrplService.js";
 import { processRecipeSplitPayment } from "../services/paymentService.js"; // අපි කලින් හදපු 90% යවන service එක
 import { supabase } from "../config/supabase.js";
 
+/**
+ * Handles recipe unlocking via crypto payments.
+ * Validates an XRPL transaction hash, ensures no double-spending,
+ * triggers the payout split to the seller, and records the purchase
+ * so the buyer gets permanent access.
+ */
 export const unlockRecipeController = async (req, res) => {
   try {
     const { recipeId, transactionHash } = req.body;
     
-    // මේක ඔයාගේ Auth Middleware එකෙන් එන User ID එක කියලා උපකල්පනය කරනවා
     const buyerId = req.user.user_id; 
 
     if (!recipeId || !transactionHash) {
@@ -23,7 +28,6 @@ export const unlockRecipeController = async (req, res) => {
     const expectedAmount = recipe.priceXrp || recipe.price;
 
     // 2. VERIFY THE TRANSACTION ON THE BLOCKCHAIN
-    // අපි කලින් හදපු xrplService එක හරහා මේක ඇත්තම payment එකක්ද බලනවා
     const verification = await xrplService.verifyPaymentTransaction(transactionHash, expectedAmount);
     
     if (!verification.isValid) {
@@ -45,11 +49,9 @@ export const unlockRecipeController = async (req, res) => {
     }
 
     // 4. PROCESS THE 90% SPLIT TO THE SELLER
-    // Platform එකට සල්ලි ඇවිත් තියෙන නිසා දැන් Seller ට එයාගේ ගාණ යවනවා
     await processRecipeSplitPayment(recipeId);
 
     // 5. UPDATE DATABASE TO UNLOCK THE RECIPE FOR THE BUYER
-    // 'payments' table එකට විස්තර දානවා (ඔයාගේ database structure එක අනුව මේක වෙනස් කරගන්න)
     const { error: insertError } = await supabase
       .from('payments')
       .insert([{

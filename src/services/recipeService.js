@@ -16,7 +16,11 @@ import xrpl from "xrpl";
 
 class RecipeService {
 
-  // 🛠️ 1. Helper Function to attach the Purchased Badge
+  /**
+   * Helper Function to attach the 'is_purchased' flag to a list of recipes.
+   * Lets the UI know which recipes the user already owns, so they aren't
+   * prompted to pay again.
+   */
   async _attachPurchaseFlags(recipes, userId) {
       if (!userId || !recipes || recipes.length === 0) {
           return recipes.map(recipe => ({ ...recipe, is_purchased: false }));
@@ -31,42 +35,63 @@ class RecipeService {
       }));
   }
 
-  // 🛠️ 2. Get All Recipes (Uses the Helper)
+  /**
+   * Retrieves all recipes and determines if the current user has bought them.
+   */
   async getAllRecipes(userId = null) {
       const recipes = await getAllRecipesModel();
       return await this._attachPurchaseFlags(recipes, userId);
   }
 
-  // 🛠️ 3. Filter Recipes (Uses the Helper)
+  /**
+   * Retrieves recipes based on tags/filters and attaches purchase status.
+   */
   async getFilteredrecipes(filters, userId = null){
     const recipes = await getFilteredRecipesModel(filters);
     return await this._attachPurchaseFlags(recipes, userId);
   }
 
-  // 🛠️ 4. Search Recipes (Uses the Helper)
+  /**
+   * Performs a keyword search on recipes and attaches purchase status.
+   */
   async searchRecipes(searchTerm, userId = null) {
     const recipes = await searchRecipesModel(searchTerm);
     return await this._attachPurchaseFlags(recipes, userId);
   }
 
-  // --- CRUD Operations ---
+  /**
+   * Saves a new recipe creation to the database.
+   */
   async addRecipe(recipeData) {
     return await addRecipeModel(recipeData);
   }
 
+  /**
+   * Retrieves a single recipe by its unique ID.
+   */
   async getRecipeById(id) {
     return await getRecipeByIdModel(id);
   }
 
+  /**
+   * Updates the details of an existing recipe in the database.
+   */
   async updateRecipe(id, updateData) {
     return await updateRecipeModel(id, updateData);
   }
 
+  /**
+   * Deletes a given recipe from the database.
+   */
   async deleteRecipe(id) {
     return await deleteRecipeModel(id);
   }
 
-  // --- Payment & Unlock Logic ---
+  /**
+   * Core payment logic for RecipeChain. Connects to the XRPL (XRP Ledger),
+   * verifies the user's transaction, records the payment, and automatically
+   * splits and sends the XRPL funds (90% to seller, 10% platform fee).
+   */
   async processRecipeUnlock(buyerId, recipeId, transactionHash) {
       // 1. Get Recipe details
       const recipe = await getRecipeWithSellerModel(recipeId);

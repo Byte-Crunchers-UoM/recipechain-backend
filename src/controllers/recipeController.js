@@ -4,6 +4,10 @@ import { supabase } from '../config/supabase.js';
 import recipeService from "../services/recipeService.js";
 import { checkPurchaseStatusModel } from '../models/recipesModel.js';
 
+/**
+ * Standardizes API responses across the recipe controller.
+ * Ensures the frontend always receives data in a predictable format.
+ */
 const sendResponse = (res, statusCode, success, message, data = null) => {
     res.status(statusCode).json({
         success,
@@ -12,7 +16,10 @@ const sendResponse = (res, statusCode, success, message, data = null) => {
     });
 }
 
-// Filter Recipes
+/**
+ * Handles requests to fetch recipes based on multiple category filters.
+ * Vital for the marketplace's discovery and search experience.
+ */
 export const getFilteredRecipes = async (req, res, next) => {
     try {
         const filters = {};
@@ -38,7 +45,10 @@ export const getFilteredRecipes = async (req, res, next) => {
     }
 }
 
-// Search recipes
+/**
+ * Searches for recipes by keyword query.
+ * Provides a fast text-based search feature for the marketplace.
+ */
 export const searchRecipes = async (req, res, next) => {
     try {
         const searchTerm = req.query.q;
@@ -60,7 +70,10 @@ export const searchRecipes = async (req, res, next) => {
     }
 };
 
-// Get all recipes
+/**
+ * Fetches all available published recipes on the platform.
+ * Typically used for the homepage or main marketplace feed.
+ */
 export const getAllRecipes = async(req, res, next) => {
     try {
         // Get the User ID from optionalSession (undefined if not logged in)
@@ -75,7 +88,11 @@ export const getAllRecipes = async(req, res, next) => {
     }
 }
 
-// CREATE
+/**
+ * Handles the creation of a new recipe by a seller.
+ * Captures all culinary details and stores them in the database
+ * so they can be monetized.
+ */
 export const addRecipe = async (req, res, next ) => {
     try{
         const{
@@ -128,7 +145,11 @@ export const addRecipe = async (req, res, next ) => {
     }
 };
 
-// READ BY ID (WITH PREMIUM GATING)
+/**
+ * Fetches details of a specific recipe.
+ * Acts as a premium gatekeeper: strips out sensitive instructions/ingredients
+ * if the requesting user hasn't purchased the recipe.
+ */
 export const getRecipeById = async (req, res, next) => {
     try {
         const recipeId = req.params.id;
@@ -188,7 +209,10 @@ export const getRecipeById = async (req, res, next) => {
     }
 };
 
-// UPDATE
+/**
+ * Updates details of an existing recipe.
+ * Allows chefs to modify their content after publication.
+ */
 export const updateRecipe = async (req, res, next) => {
     try {
         const recipe = await recipeService.updateRecipe(
@@ -206,7 +230,10 @@ export const updateRecipe = async (req, res, next) => {
     }
 };
 
-// DELETE
+/**
+ * Deletes a recipe from the platform permanently.
+ * Usually invoked by the creator or an admin to remove content.
+ */
 export const deleteRecipe = async (req, res, next)=> {
     try {
         await recipeService.deleteRecipe(req.params.id);
@@ -220,9 +247,11 @@ export const deleteRecipe = async (req, res, next)=> {
     }
 };
 
-// =======================================================
-// UNLOCK RECIPE & REVENUE SPLIT
-// =======================================================
+/**
+ * Facilitates the purchase/unlocking process of a premium recipe.
+ * Expects a completed XRPL transaction hash, verifies it, and grants
+ * access if the payment is valid.
+ */
 export const unlockRecipe = async (req, res, next) => {
     try {
         const { recipeId, transactionHash } = req.body;

@@ -2,7 +2,10 @@
 
 import { supabase } from "../config/supabase.js";
 
-// Get All Recipes
+/**
+ * Database Model: Fetches all published recipes from Supabase,
+ * including the seller's full name.
+ */
 export const getAllRecipesModel = async()=>{
     const{ data,error } = await supabase
     .from ('recipes')
@@ -15,7 +18,10 @@ export const getAllRecipesModel = async()=>{
     return data;
 };
 
-// Recipe Filtering
+/**
+ * Database Model: Fetches recipes based on dynamic category filters
+ * and joins the required tag constraints.
+ */
   export const getFilteredRecipesModel = async (filters) => {
   const { difficulty_level, goal, dietary_tags, cuisine, meal_type, occasion } = filters;
   
@@ -55,7 +61,9 @@ export const searchRecipesModel = async (searchTerm) => {
   return data;
 };
 
-// CREATE
+/**
+ * Database Model: Inserts a newly created recipe into the database.
+ */
 export const addRecipeModel = async (recipeData) =>{
     const {data,error} = await supabase
     .from("recipes")
@@ -67,7 +75,9 @@ export const addRecipeModel = async (recipeData) =>{
     return data;
 };
 
-// READ BY ID
+/**
+ * Database Model: Retrieves a single recipe configuration strictly by ID.
+ */
 export const getRecipeByIdModel = async (id) => {
     const {data,error} = await supabase
     .from("recipes")
@@ -79,7 +89,9 @@ export const getRecipeByIdModel = async (id) => {
     return data;
 };
 
-// UPDATE
+/**
+ * Database Model: Applies updates to an existing recipe's database row.
+ */
 export const updateRecipeModel = async (id, updateData) => {
   const { data, error } = await supabase
     .from("recipes")
@@ -92,7 +104,9 @@ export const updateRecipeModel = async (id, updateData) => {
   return data;
 };
 
-// DELETE
+/**
+ * Database Model: Hard deletes a recipe from the database.
+ */
 export const deleteRecipeModel = async (id) => {
   const { error } = await supabase
     .from("recipes")
@@ -105,7 +119,9 @@ export const deleteRecipeModel = async (id) => {
 
 // (Add this below the existing code)
 
-// Get the Recipe along with the Seller's details
+/**
+ * Database Model: Retrieves a recipe along with its creator/seller ID.
+ */
 export const getRecipeWithSellerModel = async (recipeId) => {
     const { data, error } = await supabase
         .from('recipes')
@@ -116,7 +132,9 @@ export const getRecipeWithSellerModel = async (recipeId) => {
     return data;
 };
 
-// Save the Payment record
+/**
+ * Database Model: Inserts a record of a successful crypto payment into the DB.
+ */
 export const savePaymentRecordModel = async (paymentData) => {
     const { data, error } = await supabase
         .from('payments') 
@@ -127,7 +145,10 @@ export const savePaymentRecordModel = async (paymentData) => {
     return data;
 };
 
-// Save the Recipe Purchase (Access) record
+/**
+ * Database Model: Grants permanent access to a recipe by inserting a row
+ * into the recipe_purchases relation table.
+ */
 export const saveRecipePurchaseModel = async (purchaseData) => {
     const { data, error } = await supabase
         .from('recipe_purchases')
@@ -136,7 +157,10 @@ export const saveRecipePurchaseModel = async (purchaseData) => {
     return data;
 };
 
-// Get the Seller's Wallet Address
+/**
+ * Database Model: Fetches a seller's connected XRPL wallet address
+ * to facilitate payout routing.
+ */
 export const getSellerWalletModel = async (sellerId) => {
     const { data, error } = await supabase
         .from('users')

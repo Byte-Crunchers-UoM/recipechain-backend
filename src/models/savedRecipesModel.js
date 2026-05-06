@@ -2,6 +2,10 @@ import { supabase } from "../config/supabase.js";
 
 // 🛠️ DELETED: getUserIdByEmailModel is gone!
 
+/**
+ * Database Model: Retrieves all recipes saved by a specific user from Supabase.
+ * Fetches related recipe details (title, image, time, difficulty, price) via a join.
+ */
 export const getSavedRecipeModel = async (user_id) => {
     const { data, error } = await supabase
         .from('saved_recipes')
@@ -24,6 +28,9 @@ export const getSavedRecipeModel = async (user_id) => {
     return data;
 };
 
+/**
+ * Database Model: Inserts a new record into the saved_recipes table to bookmark a recipe.
+ */
 export const addsavedRecipesModel = async (user_id, recipe_id) => {
     const { data, error } = await supabase
         .from('saved_recipes')
@@ -35,6 +42,9 @@ export const addsavedRecipesModel = async (user_id, recipe_id) => {
     return data;
 };
 
+/**
+ * Database Model: Deletes a specific recipe from a user's saved list in the database.
+ */
 export const deleteSavedRecipeModel = async (user_id, recipe_id) => {
     const { error } = await supabase
         .from('saved_recipes')
