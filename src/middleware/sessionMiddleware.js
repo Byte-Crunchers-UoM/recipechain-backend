@@ -31,7 +31,7 @@ export const optionalSession = (req, res, next) => {
     // const token = req.cookies.rc_session || (req.headers.authorization && req.headers.authorization.split(' ')[1]);
 
     if (!token) {
-        return next(); // කුකිය නැත්නම් Guest විදියට යවනවා
+        return next(); 
     }
 
     try {
