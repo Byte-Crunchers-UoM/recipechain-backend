@@ -4,7 +4,8 @@ import {
   updateRecipeModel,
   deleteRecipeModel,
   getAllRecipesModel,
-  getFilteredRecipesModel
+  getFilteredRecipesModel,
+  verifyRecipeModel
 } from "../models/recipesModel.js";
 
 class RecipeService {
@@ -23,6 +24,11 @@ class RecipeService {
 
   async deleteRecipe(id) {
     return await deleteRecipeModel(id);
+  }
+
+  async verifyRecipe(id, verificationData) {
+    // We pass the logic to the model to handle the Supabase update
+    return await verifyRecipeModel(id, verificationData);
   }
 
   async getAllRecipes(){

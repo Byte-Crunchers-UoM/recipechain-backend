@@ -6,7 +6,7 @@ export const createSeller = async (req, res) => {
   const { 
     email, wallet_address, full_name, nationality, address, 
     nic_no, phone_no, id_document_front_url, id_document_back_url, 
-    bio, display_name, experience, profile_photo, social_links 
+    bio, display_name, experience, profile_photo, social_links,status, rejection_reason,
   } = req.body; 
 
   const testUserId = crypto.randomUUID(); 
@@ -18,6 +18,8 @@ export const createSeller = async (req, res) => {
       wallet_address: wallet_address, 
       role: 'seller' 
     }]);
+
+    
     
     if (userError) throw userError;
 
@@ -41,7 +43,8 @@ export const createSeller = async (req, res) => {
       total_sales: 0,
       earnings_xrp: 0, // Matches your DB screenshot
       rating: 0,
-      account_balance: 0 
+      account_balance: 0,
+      
     }]);
 
     if (sellerError) throw sellerError;
@@ -119,19 +122,24 @@ export const getSellerById = async (req, res) => {
   }
 };
 
-// --- NEW FUNCTION: ADMIN VERIFICATION ---
-// 6. PATCH: Approve or Reject a seller
+
 export const verifySeller = async (req, res) => {
   const { id } = req.params;
-  const { status, rejection_reason } = req.body; // status: 'approved' or 'rejected'
+  const { status, rejection_reason, kyc_approval_page_seen } = req.body;
 
   try {
+    // Normalize status to lowercase to ensure the 'if' check works
+    const normalizedStatus = status ? status.toLowerCase() : '';
+
     const { data, error } = await supabase
       .from('sellers')
       .update({ 
-        verification_status: status,
-        rejection_reason: status === 'rejected' ? rejection_reason : null,
-        verified_at: status === 'approved' ? new Date().toISOString() : null
+        verification_status: normalizedStatus,
+        // CRITICAL: Only set to null if status is 'approved'
+        // If it's 'rejected', we take the reason sent from the frontend
+        rejection_reason: normalizedStatus === 'rejected' ? rejection_reason : null,
+        verified_at: normalizedStatus === 'approved' ? new Date().toISOString() : null,
+        kyc_approval_page_seen: kyc_approval_page_seen ?? false
       })
       .eq('user_id', id)
       .select();
@@ -140,10 +148,11 @@ export const verifySeller = async (req, res) => {
     
     return res.status(200).json({ 
       success: true, 
-      message: `Seller has been ${status}`, 
+      message: `Seller status updated to ${normalizedStatus}`, 
       data 
     });
   } catch (error) {
+    console.error("Update Error:", error.message);
     return res.status(500).json({ success: false, errorDetails: error.message });
   }
 };

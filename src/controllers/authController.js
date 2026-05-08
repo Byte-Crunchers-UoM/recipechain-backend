@@ -7,7 +7,7 @@ export const adminLogin = async (req, res) => {
     console.log("Login attempt for:", email);
 
     // 1. Supabase Auth Login
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({  //check if email and password are in the system
       email: email,
       password: password,
     });

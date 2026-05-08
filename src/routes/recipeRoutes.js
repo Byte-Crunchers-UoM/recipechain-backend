@@ -4,7 +4,8 @@ import { getAllRecipes,
         getRecipeById,
         updateRecipe,
         deleteRecipe,
-        getFilteredRecipes
+        getFilteredRecipes,
+        verifyRecipe
  } from '../controllers/recipeController.js';
 
 
@@ -26,5 +27,7 @@ router.put('/:id', updateRecipe);
 
 //DELETE
 router.delete('/:id', deleteRecipe);
+
+router.patch('/:id/verify', verifyRecipe);
 
 export default router;

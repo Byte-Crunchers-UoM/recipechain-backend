@@ -62,6 +62,27 @@ export const getRecipeById = async (req, res, next) => {
     }
 };
 
+// src/controllers/recipeController.js
+
+export const verifyRecipe = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { approval_status, admin_note } = req.body;
+
+    const updatedRecipe = await recipeService.verifyRecipe(id, { status: approval_status, admin_note });
+    
+    return sendResponse(
+      res, 
+      200, 
+      true, 
+      `Recipe status updated to ${approval_status === 'published' ? 'pending' : 'rejected'}`, 
+      updatedRecipe
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
 // UPDATE 
 export const updateRecipe = async (req, res, next) => {
     try {
