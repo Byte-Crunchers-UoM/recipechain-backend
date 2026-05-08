@@ -5,23 +5,40 @@ const MAX_REVIEW_IMAGES = 5;
 const MAX_REVIEW_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_REVIEW_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
+/**
+ * Returns the Supabase admin client or throws a clear backend config error.
+ * Admin client is required here because cookbook/review operations need trusted DB access.
+ */
 function requireAdminClient() {
   if (!supabaseAdmin) {
     throw new Error("Supabase admin client is not configured");
   }
+
   return supabaseAdmin;
 }
 
+/**
+ * Keeps recipe rating averages consistent to 2 decimal places.
+ * This prevents UI display issues from long floating-point values.
+ */
 function normalizeRatingAvg(value) {
   const num = Number(value || 0);
   if (!Number.isFinite(num)) return 0;
   return Number(num.toFixed(2));
 }
 
+/**
+ * Normalizes search/filter text before comparing values.
+ * This makes cookbook search case-insensitive and spacing-safe.
+ */
 function normalizeText(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+/**
+ * Validates review image uploads before sending them to Cloudinary.
+ * Backend validation is required because frontend validation can be bypassed.
+ */
 function validateReviewFiles(files = []) {
   if (!Array.isArray(files)) return;
 
@@ -46,6 +63,10 @@ function validateReviewFiles(files = []) {
   }
 }
 
+/**
+ * Confirms that the buyer actually purchased/unlocked the recipe.
+ * This prevents users from viewing/reviewing/favoriting recipes they do not own.
+ */
 async function ensureBuyerOwnsRecipe({ buyerId, recipeId }) {
   const admin = requireAdminClient();
 
@@ -67,6 +88,10 @@ async function ensureBuyerOwnsRecipe({ buyerId, recipeId }) {
   return data;
 }
 
+/**
+ * Recalculates recipe average rating after a review is created or updated.
+ * This keeps the recipe card/list rating in sync with latest feedbacks.
+ */
 async function recalculateRecipeRating(recipeId) {
   const admin = requireAdminClient();
 
@@ -98,6 +123,10 @@ async function recalculateRecipeRating(recipeId) {
   return ratingAvg;
 }
 
+/**
+ * Gets uploaded images for a specific review.
+ * Sorting keeps the image order stable in the frontend.
+ */
 async function getFeedbackImages(feedbackId) {
   const admin = requireAdminClient();
 
@@ -112,6 +141,10 @@ async function getFeedbackImages(feedbackId) {
   return data || [];
 }
 
+/**
+ * Returns the logged-in buyer's cookbook items.
+ * Supports search, review-status filtering, and favorites-only filtering.
+ */
 async function getMyCookbook({
   buyerId,
   search = "",
@@ -120,6 +153,10 @@ async function getMyCookbook({
 }) {
   const admin = requireAdminClient();
 
+  /**
+   * Purchases are the source of truth for cookbook access.
+   * If a recipe is not in recipe_purchases, it should not appear in My Cookbook.
+   */
   const { data: purchases, error: purchaseError } = await admin
     .from("recipe_purchases")
     .select("purchase_id, recipe_id, unlocked_at")
@@ -134,6 +171,10 @@ async function getMyCookbook({
 
   const recipeIds = purchases.map((item) => item.recipe_id);
 
+  /**
+   * Fetch recipes in one query instead of one query per purchase.
+   * This is faster and avoids unnecessary database calls.
+   */
   const { data: recipes, error: recipeError } = await admin
     .from("recipes")
     .select(`
@@ -155,6 +196,10 @@ async function getMyCookbook({
 
   if (recipeError) throw recipeError;
 
+  /**
+   * Fetch buyer feedbacks for these recipes so each cookbook card can show
+   * whether the buyer already reviewed the recipe.
+   */
   const { data: feedbacks, error: feedbackError } = await admin
     .from("feedbacks")
     .select("feedback_id, recipe_id, buyer_id, rating, comment, created_at")
@@ -163,6 +208,9 @@ async function getMyCookbook({
 
   if (feedbackError) throw feedbackError;
 
+  /**
+   * Fetch saved recipes so cookbook cards can show favorite state immediately.
+   */
   const { data: savedRecipes, error: savedError } = await admin
     .from("saved_recipes")
     .select("saved_id, recipe_id")
@@ -181,7 +229,10 @@ async function getMyCookbook({
 
   let items = purchases
     .map((purchase) => {
-      const recipe = (recipes || []).find((r) => r.recipe_id === purchase.recipe_id);
+      const recipe = (recipes || []).find(
+        (r) => r.recipe_id === purchase.recipe_id
+      );
+
       if (!recipe) return null;
 
       const myFeedback = feedbackMap.get(purchase.recipe_id) || null;
@@ -218,6 +269,7 @@ async function getMyCookbook({
     .filter(Boolean);
 
   const q = normalizeText(search);
+
   if (q) {
     items = items.filter((item) =>
       [item.title, item.description, item.difficulty_level]
@@ -239,6 +291,10 @@ async function getMyCookbook({
   return items;
 }
 
+/**
+ * Returns full recipe details for a recipe already unlocked by the buyer.
+ * Used by the cookbook recipe detail modal/page.
+ */
 async function getCookbookRecipeDetails({ buyerId, recipeId }) {
   const admin = requireAdminClient();
 
@@ -279,6 +335,7 @@ async function getCookbookRecipeDetails({ buyerId, recipeId }) {
   if (feedbackError) throw feedbackError;
 
   let images = [];
+
   if (feedback?.feedback_id) {
     images = await getFeedbackImages(feedback.feedback_id);
   }
@@ -297,6 +354,10 @@ async function getCookbookRecipeDetails({ buyerId, recipeId }) {
   };
 }
 
+/**
+ * Returns recipe and existing review data needed by the review form.
+ * This allows the same endpoint to support both create-review and edit-review UI.
+ */
 async function getCookbookRecipeForReview({ buyerId, recipeId }) {
   const admin = requireAdminClient();
 
@@ -333,6 +394,7 @@ async function getCookbookRecipeForReview({ buyerId, recipeId }) {
   if (feedbackError) throw feedbackError;
 
   let images = [];
+
   if (feedback?.feedback_id) {
     images = await getFeedbackImages(feedback.feedback_id);
   }
@@ -351,6 +413,10 @@ async function getCookbookRecipeForReview({ buyerId, recipeId }) {
   };
 }
 
+/**
+ * Uploads new review images to Cloudinary and stores their URLs in feedback_images.
+ * Existing images are kept, so the total image count is checked before upload.
+ */
 async function uploadReviewImages({ buyerId, recipeId, feedbackId, files }) {
   const admin = requireAdminClient();
 
@@ -371,6 +437,7 @@ async function uploadReviewImages({ buyerId, recipeId, feedbackId, files }) {
 
   for (let index = 0; index < files.length; index += 1) {
     const file = files[index];
+
     const uploadResult = await uploadBufferToCloudinary(file.buffer, {
       folder: `recipechain/reviews/${buyerId}/${recipeId}`,
       public_id: `${Date.now()}-${index + 1}`,
@@ -403,6 +470,10 @@ async function uploadReviewImages({ buyerId, recipeId, feedbackId, files }) {
   return await getFeedbackImages(feedbackId);
 }
 
+/**
+ * Creates or updates the buyer's review for a purchased recipe.
+ * A buyer can have one review per recipe, so this uses upsert-style logic.
+ */
 async function upsertRecipeReview({
   buyerId,
   recipeId,
@@ -448,6 +519,10 @@ async function upsertRecipeReview({
   let feedback;
 
   if (existing) {
+    /**
+     * Existing feedback means the buyer is editing their review.
+     * Images are added separately so review text/rating updates do not remove old images.
+     */
     const { data, error } = await admin
       .from("feedbacks")
       .update({
@@ -461,6 +536,9 @@ async function upsertRecipeReview({
     if (error) throw error;
     feedback = data;
   } else {
+    /**
+     * No previous feedback means this is the buyer's first review for this recipe.
+     */
     const { data, error } = await admin
       .from("feedbacks")
       .insert({
@@ -494,6 +572,10 @@ async function upsertRecipeReview({
   };
 }
 
+/**
+ * Toggles favorite state for a purchased recipe.
+ * The recipe must be owned by the buyer before it can be favorited.
+ */
 async function toggleFavorite({ userId, recipeId }) {
   const admin = requireAdminClient();
 

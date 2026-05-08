@@ -3,11 +3,19 @@ import { supabase } from "../config/supabase.js";
 import buyerService from "../services/buyerService.js";
 import cookbookService from "../services/cookbookService.js";
 
+/**
+ * Creates a test buyer record directly in users and buyers tables.
+ *
+ * @param {import("express").Request} req - Request body contains email, wallet_address, display_name, and bio.
+ * @param {import("express").Response} res - Response used to return created buyer data.
+ * @returns {Promise<void>}
+ */
 export const createBuyer = async (req, res) => {
   const { email, wallet_address, display_name, bio } = req.body;
   const testUserId = crypto.randomUUID();
 
   try {
+    // This creates the base app user first because buyers depend on users.user_id.
     const { error: userError } = await supabase.from("users").insert([
       {
         user_id: testUserId,
@@ -19,12 +27,14 @@ export const createBuyer = async (req, res) => {
 
     if (userError) throw userError;
 
+    // Use email prefix as fallback so test buyers still have a readable display name.
     const safeDisplayName =
       display_name ||
       (typeof email === "string" && email.includes("@")
         ? email.split("@")[0]
         : email || "Buyer");
 
+    // Buyer-specific profile/stat fields are stored separately from shared user auth data.
     const { error: buyerError } = await supabase.from("buyers").insert([
       {
         user_id: testUserId,
@@ -52,8 +62,16 @@ export const createBuyer = async (req, res) => {
   }
 };
 
+/**
+ * Returns all buyers with their related user email and wallet address.
+ *
+ * @param {import("express").Request} req - Express request.
+ * @param {import("express").Response} res - Response used to return buyer list.
+ * @returns {Promise<void>}
+ */
 export const getAllBuyers = async (req, res) => {
   try {
+    // Buyer table holds profile/stat data, while users table holds email and wallet address.
     const { data: buyers, error: buyerError } = await supabase
       .from("buyers")
       .select(
@@ -68,6 +86,7 @@ export const getAllBuyers = async (req, res) => {
 
     const buyerIds = buyers.map((b) => b.user_id);
 
+    // Fetch matching users in one query to avoid one database request per buyer.
     const { data: users, error: userError } = await supabase
       .from("users")
       .select("user_id, email, wallet_address")
@@ -75,6 +94,7 @@ export const getAllBuyers = async (req, res) => {
 
     if (userError) throw userError;
 
+    // Combine buyers and users manually because the tables are queried separately.
     const combinedData = buyers.map((buyer) => {
       const matchingUser = users.find((u) => u.user_id === buyer.user_id);
 
@@ -104,6 +124,13 @@ export const getAllBuyers = async (req, res) => {
   }
 };
 
+/**
+ * Returns one buyer by user ID with related email and wallet address.
+ *
+ * @param {import("express").Request} req - Request params contain buyer user ID.
+ * @param {import("express").Response} res - Response used to return buyer data.
+ * @returns {Promise<void>}
+ */
 export const getBuyerById = async (req, res) => {
   const { id } = req.params;
 
@@ -118,6 +145,7 @@ export const getBuyerById = async (req, res) => {
 
     if (buyerError) throw buyerError;
 
+    // Email and wallet address are stored in users table, not buyers table.
     const { data: userData, error: userError } = await supabase
       .from("users")
       .select("email, wallet_address")
@@ -139,10 +167,18 @@ export const getBuyerById = async (req, res) => {
   }
 };
 
+/**
+ * Updates a buyer record by user ID.
+ *
+ * @param {import("express").Request} req - Request params contain buyer ID and body contains fields to update.
+ * @param {import("express").Response} res - Response used to return update status.
+ * @returns {Promise<void>}
+ */
 export const updateBuyer = async (req, res) => {
   const { id } = req.params;
 
   try {
+    // This generic update is useful for admin/testing flows; user-facing profile updates use updateMyBuyerProfile.
     const { error } = await supabase
       .from("buyers")
       .update(req.body)
@@ -162,10 +198,18 @@ export const updateBuyer = async (req, res) => {
   }
 };
 
+/**
+ * Deletes a buyer and the related user record.
+ *
+ * @param {import("express").Request} req - Request params contain buyer ID.
+ * @param {import("express").Response} res - Response used to return delete status.
+ * @returns {Promise<void>}
+ */
 export const deleteBuyer = async (req, res) => {
   const { id } = req.params;
 
   try {
+    // Delete buyer profile first because it depends on the base users table row.
     const { error: buyerError } = await supabase
       .from("buyers")
       .delete()
@@ -192,6 +236,13 @@ export const deleteBuyer = async (req, res) => {
   }
 };
 
+/**
+ * Returns the logged-in buyer's own profile.
+ *
+ * @param {import("express").Request} req - Request must contain req.user from session middleware.
+ * @param {import("express").Response} res - Response used to return buyer profile.
+ * @returns {Promise<void>}
+ */
 export const getMyBuyerProfile = async (req, res) => {
   try {
     const userId = req.user?.user_id;
@@ -203,6 +254,7 @@ export const getMyBuyerProfile = async (req, res) => {
       });
     }
 
+    // Service layer owns profile-building logic, including joined data or derived fields.
     const profile = await buyerService.getBuyerProfile({ userId });
 
     return res.status(200).json({ ok: true, profile });
@@ -215,6 +267,13 @@ export const getMyBuyerProfile = async (req, res) => {
   }
 };
 
+/**
+ * Updates the logged-in buyer's own profile.
+ *
+ * @param {import("express").Request} req - Request must contain req.user, body fields, and optional uploaded file.
+ * @param {import("express").Response} res - Response used to return updated profile.
+ * @returns {Promise<void>}
+ */
 export const updateMyBuyerProfile = async (req, res) => {
   try {
     const userId = req.user?.user_id;
@@ -226,6 +285,7 @@ export const updateMyBuyerProfile = async (req, res) => {
       });
     }
 
+    // Service handles validation, allowed fields, and optional profile image upload.
     const profile = await buyerService.updateBuyerProfile({
       userId,
       body: req.body,
@@ -246,6 +306,13 @@ export const updateMyBuyerProfile = async (req, res) => {
   }
 };
 
+/**
+ * Returns purchased cookbook items for the logged-in buyer.
+ *
+ * @param {import("express").Request} req - Request query may contain q, reviewStatus, and favoritesOnly.
+ * @param {import("express").Response} res - Response used to return cookbook items.
+ * @returns {Promise<void>}
+ */
 export const getMyCookbook = async (req, res) => {
   try {
     const buyerId = req.user?.user_id;
@@ -257,6 +324,7 @@ export const getMyCookbook = async (req, res) => {
       });
     }
 
+    // Query params make one endpoint support search, review filtering, and favorites filtering.
     const search = String(req.query.q || "");
     const reviewStatus = String(req.query.reviewStatus || "all");
     const favoritesOnly =
@@ -282,6 +350,13 @@ export const getMyCookbook = async (req, res) => {
   }
 };
 
+/**
+ * Returns full details for one purchased cookbook recipe.
+ *
+ * @param {import("express").Request} req - Request params contain recipeId and session contains buyer ID.
+ * @param {import("express").Response} res - Response used to return recipe details.
+ * @returns {Promise<void>}
+ */
 export const getMyCookbookRecipeDetails = async (req, res) => {
   try {
     const buyerId = req.user?.user_id;
@@ -294,6 +369,7 @@ export const getMyCookbookRecipeDetails = async (req, res) => {
       });
     }
 
+    // Service should ensure the buyer actually owns/unlocked this recipe.
     const recipe = await cookbookService.getCookbookRecipeDetails({
       buyerId,
       recipeId,
@@ -312,6 +388,13 @@ export const getMyCookbookRecipeDetails = async (req, res) => {
   }
 };
 
+/**
+ * Returns the recipe data needed for the buyer review form.
+ *
+ * @param {import("express").Request} req - Request params contain recipeId and session contains buyer ID.
+ * @param {import("express").Response} res - Response used to return review page data.
+ * @returns {Promise<void>}
+ */
 export const getMyCookbookRecipeForReview = async (req, res) => {
   try {
     const buyerId = req.user?.user_id;
@@ -324,6 +407,7 @@ export const getMyCookbookRecipeForReview = async (req, res) => {
       });
     }
 
+    // Review page needs ownership validation plus any existing review state.
     const recipe = await cookbookService.getCookbookRecipeForReview({
       buyerId,
       recipeId,
@@ -342,11 +426,20 @@ export const getMyCookbookRecipeForReview = async (req, res) => {
   }
 };
 
+/**
+ * Creates or updates the logged-in buyer's review for a purchased recipe.
+ *
+ * @param {import("express").Request} req - Request params contain recipeId, body contains rating/comment, and files may contain photos.
+ * @param {import("express").Response} res - Response used to return saved review result.
+ * @returns {Promise<void>}
+ */
 export const upsertMyCookbookRecipeReview = async (req, res) => {
   try {
     const buyerId = req.user?.user_id;
     const { recipeId } = req.params;
     const { rating, comment } = req.body || {};
+
+    // Multer may provide req.files only when images are attached.
     const files = Array.isArray(req.files) ? req.files : [];
 
     if (!buyerId) {
@@ -356,6 +449,7 @@ export const upsertMyCookbookRecipeReview = async (req, res) => {
       });
     }
 
+    // Upsert allows one buyer review per recipe while still supporting edit review.
     const result = await cookbookService.upsertRecipeReview({
       buyerId,
       recipeId,
@@ -378,6 +472,13 @@ export const upsertMyCookbookRecipeReview = async (req, res) => {
   }
 };
 
+/**
+ * Toggles a purchased recipe as favorite/unfavorite for the logged-in buyer.
+ *
+ * @param {import("express").Request} req - Request params contain recipeId and session contains user ID.
+ * @param {import("express").Response} res - Response used to return favorite state.
+ * @returns {Promise<void>}
+ */
 export const toggleMyCookbookFavorite = async (req, res) => {
   try {
     const userId = req.user?.user_id;
@@ -390,6 +491,7 @@ export const toggleMyCookbookFavorite = async (req, res) => {
       });
     }
 
+    // Service owns the current favorite state check and database update.
     const result = await cookbookService.toggleFavorite({
       userId,
       recipeId,
