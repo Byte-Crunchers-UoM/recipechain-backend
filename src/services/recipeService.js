@@ -10,7 +10,7 @@ import {
   savePaymentRecordModel,
   saveRecipePurchaseModel,
   getSellerWalletModel,
-  getUserPurchasesModel // 🛠️ Brought all imports to one place
+  getUserPurchasesModel 
 } from "../models/recipesModel.js";
 import xrpl from "xrpl";
 
@@ -90,7 +90,7 @@ class RecipeService {
   /**
    * Core payment logic for RecipeChain. Connects to the XRPL (XRP Ledger),
    * verifies the user's transaction, records the payment, and automatically
-   * splits and sends the XRPL funds (90% to seller, 10% platform fee).
+   * splits and sends the XRPL funds based on dynamic environment variables.
    */
   async processRecipeUnlock(buyerId, recipeId, transactionHash) {
       // 1. Get Recipe details
@@ -100,10 +100,20 @@ class RecipeService {
       const priceXrp = recipe.price || recipe.priceXrp || 0; 
       const sellerId = recipe.sellers?.user_id;
 
-      // 2. Verify XRPL Transaction
-      const networkUrl = process.env.XRPL_NETWORK || "wss://s.altnet.rippletest.net:51233";
-      const platformAddress = process.env.XRPL_TREASURY_ADDRESS || "rMCnGCWskZYWMd5Vr6SeCmPF1kgg2jX2tX"; 
+      // 🛑 BEST PRACTICE: Load config from environment and fail fast if missing
+      const networkUrl = process.env.XRPL_NETWORK;
+      const platformAddress = process.env.XRPL_TREASURY_ADDRESS;
       
+      if (!networkUrl || !platformAddress) {
+          throw new Error("CRITICAL: XRPL network or treasury address is missing from server configuration.");
+      }
+
+      // Load dynamic business rules (with safe fallbacks for math)
+      const feePercentage = parseFloat(process.env.PLATFORM_FEE_PERCENTAGE || "0.10");
+      const sellerPercentage = 1 - feePercentage;
+      const slippageTolerance = parseFloat(process.env.XRPL_SLIPPAGE_TOLERANCE || "0.0001");
+
+      // 2. Verify XRPL Transaction
       let client = new xrpl.Client(networkUrl);
       await client.connect();
 
@@ -128,16 +138,16 @@ class RecipeService {
           const received = Number(droppedAmount);
           const expected = Number(priceXrp);
 
-          if (received + 0.0001 < expected) {
+          if (received + slippageTolerance < expected) {
               throw new Error(`Insufficient payment amount. Expected ${expected} XRP, but received ${received} XRP.`);
           }
       } finally {
           await client.disconnect();
       }
 
-      // 3. Calculate Split
-      const sellerShare = Number((priceXrp * 0.90).toFixed(6)); 
-      const commissionShare = Number((priceXrp * 0.10).toFixed(6));
+      // 3. Calculate Split dynamically
+      const sellerShare = Number((priceXrp * sellerPercentage).toFixed(6)); 
+      const commissionShare = Number((priceXrp * feePercentage).toFixed(6));
 
       // 4. Save Payment to DB
       const paymentRecord = await savePaymentRecordModel({
@@ -173,8 +183,6 @@ class RecipeService {
 
       // 6. Background Process: Refund OR Payout to Seller
       if (isDuplicate) {
-          
-          // ⛔ REFUND LOGIC
           console.log("🔄 Initiating Refund to Buyer for duplicate purchase...");
           
           getSellerWalletModel(buyerId).then(buyerUser => {
@@ -201,7 +209,6 @@ class RecipeService {
 
       } else if (sellerId && priceXrp > 0) {
           
-          // ✅ NORMAL PAYOUT LOGIC
           getSellerWalletModel(sellerId).then(sellerUser => {
               const destWallet = sellerUser?.wallet_address;
               

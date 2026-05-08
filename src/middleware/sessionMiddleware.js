@@ -24,18 +24,14 @@ export const requireSession = (req, res, next) => {
   }
 };
 export const optionalSession = (req, res, next) => {
-    // 1. හරියටම requireSession එකේ වගේම rc_session කුකිය ගන්නවා
     const token = req.cookies.rc_session;
     
-    // (අවශ්‍ය නම් Header එකෙනුත් ගන්න පුළුවන් විදියට තියාගන්න)
-    // const token = req.cookies.rc_session || (req.headers.authorization && req.headers.authorization.split(' ')[1]);
 
     if (!token) {
-        return next(); // කුකිය නැත්නම් Guest විදියට යවනවා
+        return next(); 
     }
 
     try {
-        // 2. මෙතන 'process.env.SESSION_SECRET' වෙන්න ඕනේ, 'JWT_SECRET' නෙවෙයි (requireSession එකේ තියෙන්නෙත් එහෙමයි)
         const decoded = jwt.verify(token, process.env.SESSION_SECRET);
         
         req.user = decoded; 

@@ -1,4 +1,4 @@
-//src/models/savedRecipeModel.js
+//src/models/recipesModel.js
 
 import { supabase } from "../config/supabase.js";
 
@@ -11,7 +11,7 @@ export const getAllRecipesModel = async()=>{
     .from ('recipes')
     .select(`*,
       sellers!inner(full_name)`)
-    //.eq('approval_status', 'published')
+    .eq('status', 'active')
     .order('created_at',{ascending:false});
     
     if (error) throw error 
@@ -35,7 +35,7 @@ export const getAllRecipesModel = async()=>{
       ),
       tags:tag_id!inner (*)
     `)
-    .eq('approval_status', 'published');
+    .eq('status', 'active')
 
   if(difficulty_level) query = query.ilike('difficulty_level', difficulty_level)
   if (goal) query = query.ilike('tags.goal', goal);
@@ -55,7 +55,7 @@ export const searchRecipesModel = async (searchTerm) => {
   const { data, error } = await supabase
     .from('recipes')
     .select('*, sellers:chef_id(full_name, display_name)') 
-    .eq('approval_status', 'published')
+    .eq('status', 'active')
     .ilike('title', `%${searchTerm}%`); 
   if (error) throw error;
   return data;
@@ -81,7 +81,7 @@ export const addRecipeModel = async (recipeData) =>{
 export const getRecipeByIdModel = async (id) => {
     const {data,error} = await supabase
     .from("recipes")
-    .select("*")
+    .select("*, sellers(full_name)")
     .eq("recipe_id",id)
     .single();
 
