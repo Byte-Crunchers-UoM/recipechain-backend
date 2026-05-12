@@ -1,6 +1,5 @@
 import { supabase } from "../config/supabase.js";
 
-//Get All Recipes
 export const getAllRecipesModel = async()=>{
     const{ data,error } = await supabase
     .from ('recipes')
@@ -10,9 +9,8 @@ export const getAllRecipesModel = async()=>{
     return data;
 };
 
-//Filter Recipes
 export const getFilteredRecipesModel = async (filters)=>{
-  const {goal, dietary, cuisine, meal, occassion} = filters;
+  const {goal, dietary, cuisine, meal, occasion} = filters;
   let query = supabase
   .from('recipes')
   .select(`recipe_id,
@@ -21,23 +19,22 @@ export const getFilteredRecipesModel = async (filters)=>{
     price,
     image_url,
     rating_avg,
-    tags:tag_id!inner(*)
+    tags!inner(*)
     `)
   .eq('status','published');
 
-  if (goal) query = query.eq('tags.goal',goal);
+  if (goal) query = query.eq('tags.goal', goal);
   if (dietary) query = query.eq('tags.dietary_tags', dietary);
   if (cuisine) query = query.eq('tags.cuisine', cuisine);
-  if (meal) query = query.eq('tags.meal_type',meal);
-  if (occassion) query =query.eq('tags.occassion',occassion);
-  const { data,error } = await query.order('created_at',{ascending:'false'});
+  if (meal) query = query.eq('tags.meal_type', meal);
+  if (occasion) query = query.eq('tags.occasion', occasion);
+  const { data,error } = await query.order('created_at',{ascending:false});
 
   if (error) throw error;
 
   return data;
 };
 
-//CREATE - creates tags (if provided) and recipe
 export const addRecipeModel = async (recipeData) =>{
   const { tags, ...restRecipe } = recipeData;
   let tagRow = null;
@@ -68,16 +65,14 @@ export const addRecipeModel = async (recipeData) =>{
       if (tagError) throw tagError;
       tagRow = insertedTag;
 
-      // Set tag_id on recipe if tag was created
-      // Try multiple possible PK names: id, tag_id, tags_id
       const tagId = tagRow?.id ?? tagRow?.tag_id ?? tagRow?.tags_id;
-      console.log('Tag inserted:', tagRow);
-      console.log('Extracted tag ID:', tagId);
       if (tagId) {
         restRecipe.tag_id = tagId;
-        console.log('Set recipe.tag_id to:', tagId);
       }
     }
+
+    restRecipe.ingredients = restRecipe.ingredients || [];
+    restRecipe.instructions = restRecipe.instructions || [];
 
     const { data: recipe, error: recipeError } = await supabase
       .from('recipes')
@@ -92,7 +87,6 @@ export const addRecipeModel = async (recipeData) =>{
   }
 };
 
-//READ BY ID
 export const getRecipeByIdModel = async (id) => {
     const {data,error} = await supabase
     .from("recipes")
@@ -104,22 +98,68 @@ export const getRecipeByIdModel = async (id) => {
     return data;
 };
 
-// UPDATE
 export const updateRecipeModel = async (id, updateData) => {
-  const { data, error } = await supabase
-    .from("recipes")
-    .update(updateData)
-    .eq("recipe_id", id)
-    .select()
-    .single();
+  const { tags, ...restRecipe } = updateData; 
 
-  if (error) throw error;
-  return data;
+  try {
+
+    const { data: existingRecipe, error: fetchError } = await supabase
+      .from("recipes")
+      .select("tag_id")
+      .eq("recipe_id", id)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    if (tags && existingRecipe.tag_id) {
+      const { error: tagUpdateError } = await supabase
+        .from("tags")
+        .update({
+          dietary_tags: tags.dietary_tags,
+          goal: tags.goal,
+          meal_type: tags.meal_type,
+          occasion: tags.occasion,
+          cuisine: tags.cuisine
+        })
+        .eq("tag_id", existingRecipe.tag_id);
+
+      if (tagUpdateError) throw tagUpdateError;
+    }
+
+
+    const { data: recipe, error: recipeError } = await supabase
+      .from("recipes")
+      .update(restRecipe)
+      .eq("recipe_id", id)
+      .select()
+      .single();
+
+    if (recipeError) throw recipeError;
+    return recipe;
+
+  } catch (error) {
+    throw error;
+  }
 };
 
-// DELETE - also deletes associated tag if it exists
+export const updateRecipeTagsModel = async (tagId, tags) => {
+  if (!tagId || !tags) return;
+
+  const { error } = await supabase
+    .from('tags')
+    .update({
+      dietary_tags: tags.dietary_tags,
+      goal: tags.goal,
+      meal_type: tags.meal_type,
+      occasion: tags.occasion,
+      cuisine: tags.cuisine
+    })
+    .eq('tag_id', tagId); 
+
+  if (error) throw error;
+  return true;
+};
 export const deleteRecipeModel = async (id) => {
-  // 1. Get recipe to find associated tag_id
   const { data: recipe, error: fetchError } = await supabase
     .from("recipes")
     .select("tag_id")
@@ -128,19 +168,6 @@ export const deleteRecipeModel = async (id) => {
 
   if (fetchError) throw fetchError;
 
-  console.log('Fetched recipe:', recipe);
-  console.log('Recipe tag_id:', recipe?.tag_id);
-
-  // 2. Delete the recipe
-  const { error: deleteRecipeError } = await supabase
-    .from("recipes")
-    .delete()
-    .eq("recipe_id", id);
-
-  if (deleteRecipeError) throw deleteRecipeError;
-  console.log('Recipe deleted with id:', id);
-
-  // 3. Delete associated tag if tag_id exists
   if (recipe?.tag_id) {
     const { error: deleteTagError } = await supabase
       .from("tags")
@@ -149,13 +176,15 @@ export const deleteRecipeModel = async (id) => {
 
     if (deleteTagError) {
       console.warn('Warning: Failed to delete associated tag:', deleteTagError);
-      // Don't throw - recipe was successfully deleted
-    } else {
-      console.log('Deleted tag with tag_id:', recipe.tag_id);
     }
-  } else {
-    console.log('Recipe has no tag_id, skipping tag deletion');
   }
+
+  const { error: deleteRecipeError } = await supabase
+    .from("recipes")
+    .delete()
+    .eq("recipe_id", id);
+
+  if (deleteRecipeError) throw deleteRecipeError;
 
   return true;
 };
