@@ -1,7 +1,10 @@
 import { supabase } from '../config/supabase.js';
 import crypto from 'crypto'; 
 
-// 1. CREATE: Add a new seller with all profile data
+/**
+ * Creates a new seller profile alongside a parent user account.
+ * Initializes empty seller stats (sales, ratings) in the database.
+ */
 export const createSeller = async (req, res) => {
   // Extracting all the new KYC and profile fields from Postman
   const { 
@@ -58,7 +61,10 @@ export const createSeller = async (req, res) => {
   }
 };
 
-// 2. READ: Get all sellers
+/**
+ * Retrieves a list of all sellers on the platform.
+ * Combines seller profile data with base user data (email, wallet).
+ */
 export const getAllSellers = async (req, res) => {
   try {
     // Fetch absolutely every column by using the '*' wildcard
@@ -98,7 +104,10 @@ export const getAllSellers = async (req, res) => {
   }
 };
 
-// 3. READ: Get a single seller by ID
+/**
+ * Retrieves detailed information about a specific seller by ID.
+ * Used to render public seller storefronts or profiles.
+ */
 export const getSellerById = async (req, res) => {
   const { id } = req.params;
   try {
@@ -129,7 +138,10 @@ export const getSellerById = async (req, res) => {
   }
 };
 
-// 4. UPDATE: Update a seller's profile
+/**
+ * Updates a seller's public profile details (bio, photo, links).
+ * Allows sellers to customize their brand presence.
+ */
 export const updateSeller = async (req, res) => {
   const { id } = req.params;
   
@@ -156,7 +168,10 @@ export const updateSeller = async (req, res) => {
   }
 };
 
-// 5. DELETE: Remove a seller account permanently
+/**
+ * Deletes a seller account completely from the database.
+ * Removes both the user and seller entities.
+ */
 export const deleteSeller = async (req, res) => {
   const { id } = req.params;
   try {

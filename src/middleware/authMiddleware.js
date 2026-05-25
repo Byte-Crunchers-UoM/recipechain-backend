@@ -1,5 +1,10 @@
+// src/middleware/authMiddleware.js
 import { supabase } from '../config/supabase.js';
 
+/**
+ * Middleware to protect admin-only routes.
+ * Verifies the JWT token and ensures the logged-in user holds the 'admin' role.
+ */
 export const protectAdmin = async (req, res, next) => {
   let token;
 

@@ -1,6 +1,6 @@
 // src/controllers/authController.js
 import jwt from "jsonwebtoken";
-import { supabase, supabaseAdmin } from "../config/supabase.js";
+import { supabase } from "../config/supabase.js";
 import userService from "../services/userService.js";
 
 /**
@@ -83,53 +83,30 @@ const setSessionCookie = (res, token) => {
 
 export const syncWeb3AuthUser = async (req, res) => {
   try {
-    if (!supabaseAdmin) {
-      return res.status(500).json({
-        ok: false,
-        message: "SUPABASE_SERVICE_ROLE_KEY missing on backend",
-      });
-    }
-
     const email = req.web3auth?.email;
     const authProvider =
       req.web3auth?.authConnection ||
       req.web3auth?.groupedAuthConnectionId ||
       "unknown";
 
-    const { walletAddress, mode } = req.body;
+    const name =
+      req.web3auth?.name ||
+      req.web3auth?.username ||
+      req.web3auth?.userName ||
+      "";
+
+    const profileImage =
+      req.web3auth?.picture ||
+      req.web3auth?.profileImage ||
+      req.web3auth?.profile_image ||
+      "";
+
+    const { walletAddress } = req.body;
 
     if (!email) {
       return res.status(400).json({
         ok: false,
-        message:
-          "Email missing in Web3Auth token. Enable email scope in Web3Auth.",
-      });
-    }
-
-    if (!walletAddress || typeof walletAddress !== "string") {
-      return res
-        .status(400)
-        .json({ ok: false, message: "walletAddress is required" });
-    }
-
-    if (mode !== "login" && mode !== "signup") {
-      return res
-        .status(400)
-        .json({ ok: false, message: "mode must be login or signup" });
-    }
-
-    const { data: existingUser, error: findErr } = await supabaseAdmin
-      .from("users")
-      .select("*")
-      .eq("email", email.toLowerCase())
-      .maybeSingle();
-
-    if (findErr) throw findErr;
-
-    if (mode === "login" && !existingUser) {
-      return res.status(404).json({
-        ok: false,
-        message: "Account not found. Please sign up first.",
+        message: "Email missing in Web3Auth token.",
       });
     }
 
@@ -138,6 +115,13 @@ export const syncWeb3AuthUser = async (req, res) => {
       walletAddress,
       authProvider
     );
+
+    await userService.hydrateBuyerIdentityFromWeb3Auth({
+      userId: user.user_id,
+      email: email.toLowerCase(),
+      name,
+      profileImage,
+    });
 
     const sessionToken = makeSessionToken({
       user_id: user.user_id,
@@ -150,17 +134,13 @@ export const syncWeb3AuthUser = async (req, res) => {
     return res.json({
       ok: true,
       user,
-      modeResolved: existingUser ? "login" : "signup",
     });
   } catch (error) {
     console.error("syncWeb3AuthUser error:", error);
 
     const message = error?.message || "Server error";
 
-    if (
-      message.includes("already registered with") ||
-      message.includes("Please continue with")
-    ) {
+    if (message.includes("already registered with")) {
       return res.status(409).json({ ok: false, message });
     }
 

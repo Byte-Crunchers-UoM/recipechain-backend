@@ -1,19 +1,20 @@
+//src/index.js
 import dotenv from "dotenv";
 dotenv.config();
 
-import express from "express";
-import cors from "cors";
+import express from 'express';
+import cors from 'cors';
+import { testConnection } from './config/supabase.js';
+import userRoutes from './routes/userRoutes.js';
+import buyerRoutes from './routes/buyerRoutes.js';
+import recipeRoutes from './routes/recipeRoutes.js';
+import savedRecipeRoutes from './routes/savedRecipeRoutes.js';
+import errorHandler from './middleware/errorHandler.js';
 import cookieParser from "cookie-parser";
-
-import { testConnection } from "./config/supabase.js";
-
-import userRoutes from "./routes/userRoutes.js";
-import buyerRoutes from "./routes/buyerRoutes.js";
 import sellerRoutes from "./routes/sellerRoutes.js";
-import recipeRoutes from "./routes/recipeRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
-
-import errorHandler from "./middleware/errorHandler.js";
+import walletRoutes from './routes/walletRoutes.js';
+import stripeRoutes from './routes/stripeRoutes.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -26,6 +27,7 @@ app.use(
 );
 
 app.use(cookieParser());
+app.use('/api/stripe', stripeRoutes);
 app.use(express.json());
 
 // Health check
@@ -43,12 +45,15 @@ app.get("/test-db", async (req, res) => {
   }
 });
 
-// Routes
-app.use("/api", userRoutes);
-app.use("/api", buyerRoutes);
-app.use("/api/sellers", sellerRoutes);
-app.use("/api/recipes", recipeRoutes);
-app.use("/api/auth", authRoutes);
+// API routes
+app.use('/api', userRoutes);
+app.use('/api/recipes', recipeRoutes);
+app.use('/api/savedrecipes', savedRecipeRoutes)
+app.use('/api/auth', authRoutes);
+app.use('/api/sellers', sellerRoutes);
+app.use("/api/wallet", walletRoutes);
+app.use("/api/buyer", buyerRoutes);
+
 
 // Error handler
 app.use(errorHandler);
