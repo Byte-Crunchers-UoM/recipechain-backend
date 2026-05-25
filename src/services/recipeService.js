@@ -100,7 +100,7 @@ class RecipeService {
       const priceXrp = recipe.price || recipe.priceXrp || 0; 
       const sellerId = recipe.sellers?.user_id;
 
-      // 🛑 BEST PRACTICE: Load config from environment and fail fast if missing
+      //  BEST PRACTICE: Load config from environment and fail fast if missing
       const networkUrl = process.env.XRPL_NETWORK;
       const platformAddress = process.env.XRPL_TREASURY_ADDRESS;
       

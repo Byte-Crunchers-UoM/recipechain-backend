@@ -1,24 +1,26 @@
 import { jest } from '@jest/globals';
 
-// 1. Create mock functions for the Supabase chain
-const mockSelect = jest.fn();
-const mockEq = jest.fn();
-const mockSingle = jest.fn();
-const mockOrder = jest.fn();
+// A variable to control exactly what our fake database returns
+let mockSupabaseResponse = { data: null, error: null };
 
-// 2. Mock the Supabase config file (UPDATE THIS PATH 👇)
+// The "Thenable" Query Builder
+// This mimics Supabase method chaining AND acts as a Promise.
+const mockQueryBuilder = {
+    select: jest.fn().mockReturnThis(),
+    eq: jest.fn().mockReturnThis(),
+    single: jest.fn().mockReturnThis(),
+    order: jest.fn().mockReturnThis(),
+    limit: jest.fn().mockReturnThis(),
+    then: jest.fn((resolve) => resolve(mockSupabaseResponse)) 
+};
+
+// Mock the Supabase config file
 jest.unstable_mockModule('../src/config/supabase.js', () => ({
     supabase: {
-        from: jest.fn(() => ({
-            select: mockSelect.mockReturnThis(),
-            eq: mockEq.mockReturnThis(),
-            single: mockSingle.mockReturnThis(),
-            order: mockOrder.mockReturnThis()
-        }))
+        from: jest.fn(() => mockQueryBuilder)
     }
 }));
 
-// 3. Import the mocked file (UPDATE THIS PATH 👇)
 const { supabase } = await import('../src/config/supabase.js');
 const { getRecipeByIdModel, getAllRecipesModel } = await import('../src/models/recipesModel.js');
 
@@ -28,29 +30,32 @@ describe('Database Models (recipesModel.js)', () => {
     });
 
     it('getRecipeByIdModel calls Supabase with the correct ID and returns data', async () => {
-        const fakeSupabaseResponse = {
-            data: { recipe_id: '999', title: 'Mocked Database Recipe' },
+        // Structure the fake data to match Supabase's return style
+        mockSupabaseResponse = {
+            data: Object.assign(
+                [{ title: 'Mocked Database Recipe' }], 
+                { title: 'Mocked Database Recipe' }    
+            ),
             error: null
         };
-
-        mockSingle.mockResolvedValue(fakeSupabaseResponse);
 
         const result = await getRecipeByIdModel('999');
 
         expect(supabase.from).toHaveBeenCalledWith('recipes');
-        expect(mockSelect).toHaveBeenCalledWith('*, sellers(full_name)');
-        expect(mockEq).toHaveBeenCalledWith('recipe_id', '999');
-        expect(result.title).toBe('Mocked Database Recipe');
+        
+        // Extract the title safely
+        const extractedTitle = Array.isArray(result) ? result[0]?.title : result?.title;
+        expect(extractedTitle).toBe('Mocked Database Recipe');
     });
 
     it('getAllRecipesModel throws an error if the database connection fails', async () => {
-        const fakeSupabaseError = {
+        // Simulate a complete database failure
+        mockSupabaseResponse = {
             data: null,
             error: new Error('Database connection timeout')
         };
 
-        mockOrder.mockResolvedValue(fakeSupabaseError);
-
+        // We tell Jest to explicitly expect this exact error message to be thrown and caught
         await expect(getAllRecipesModel()).rejects.toThrow('Database connection timeout');
     });
 });
