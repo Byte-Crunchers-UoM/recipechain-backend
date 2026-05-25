@@ -3,11 +3,11 @@ import request from 'supertest';
 import app from '../src/index.js';
 describe('Admin Authentication API', () => {
   
-  // Test Scenario 1: The Happy Path (Successful Login)
+  // Test Scenario 1: The Successful Login
   it('should successfully log in a valid admin and return a token', async () => {
     const res = await request(app).post('/api/auth/admin-login').send({
-        email: 'admin@recipechain.com', // Your test email
-        password: '20010319'        // Your test password
+        email: 'admin@recipechain.com', //  test email
+        password: '20010319'        //  test password
       });
 
     // Assertions (What we expect the server to say)
@@ -42,8 +42,8 @@ describe('Admin Authentication API', () => {
         // Intentionally leaving out password
       });
 
-    // Depending on your validation, this might be a 400 or 401
-    // Adjust the expected status code based on how your backend handles it
+    // Depending on validation, this might be a 400 or 401
+    
     expect(res.statusCode).toBeGreaterThanOrEqual(400); 
   });
 });

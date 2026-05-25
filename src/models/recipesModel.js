@@ -75,7 +75,8 @@ export const getRecipeByIdModel = async (id) => {
   return {
     ...data,
     full_name: data.sellers?.full_name || "RecipeChain User",
-    price_xrp: data.price
+    price_xrp: data.price,
+    rejection_reason: data.rejection_reason
   };
 };
 
@@ -103,24 +104,26 @@ export const deleteRecipeModel = async (id) => {
   return true;
 };
 
-// src/models/recipesModel.js
 
-export const verifyRecipeModel = async (recipeId, { status, admin_note }) => {
-  // Map 'approved' to 'active' and 'rejected' to 'deactive'
-  // to stay within your DB constraints: ['active', 'draft', 'deactive']
-  const finalStatus = status === 'approved' ? 'active' : 'deactive';
-
+export const verifyRecipeModel = async (recipeId, { approval_status, rejection_reason }) => {
+  
   const { data, error } = await supabase
     .from('recipes')
     .update({ 
-      approval_status: status, // Matches the process (approved/rejected)
-      status: finalStatus,     // Controls marketplace visibility
-      chef_note: status === 'rejected' ? admin_note : null 
+      // 1. Only update the administrative status
+      approval_status: approval_status, 
+      
+      // 2. Only save the reason if the status is 'rejected'
+      rejection_reason: approval_status === 'rejected' ? rejection_reason : null 
     })
     .eq('recipe_id', recipeId)
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error("Database Update Error:", error.message);
+    throw error;
+  }
+  
   return data;
 };
