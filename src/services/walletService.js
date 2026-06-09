@@ -1,5 +1,6 @@
 import { supabase, supabaseAdmin } from "../config/supabase.js";
 import xrplService from "./xrplService.js";
+import activityService from "./activityService.js";
 
 const db = supabaseAdmin || supabase;
 
@@ -13,9 +14,11 @@ const AUTO_FUND_XRPL_ON_TOPUP =
 
 const toAmount = (value) => {
   const n = Number(value);
+
   if (!Number.isFinite(n) || n <= 0) {
     throw new Error("Amount must be greater than 0");
   }
+
   return Number(n.toFixed(6));
 };
 
@@ -116,6 +119,7 @@ const getWalletTransactions = async (userId) => {
     .order("created_at", { ascending: false });
 
   if (error) throw error;
+
   return data || [];
 };
 
@@ -332,12 +336,18 @@ const buyRecipeWithBalance = async (userId, recipeId) => {
   const buyer = await requireBuyer(userId);
   const recipe = await getRecipeForPurchase(recipeId);
 
-  if (!recipe.chef_id) throw new Error("Recipe seller not found");
+  if (!recipe.chef_id) {
+    throw new Error("Recipe seller not found");
+  }
 
   const price = Number(recipe.price || 0);
-  if (price <= 0) throw new Error("Invalid recipe price");
+
+  if (price <= 0) {
+    throw new Error("Invalid recipe price");
+  }
 
   const currentBalance = Number(buyer.account_balance || 0);
+
   if (currentBalance < price) {
     throw new Error("Insufficient balance");
   }
@@ -404,6 +414,7 @@ const buyRecipeWithBalance = async (userId, recipeId) => {
   const nextSellerBalance = Number(
     (Number(seller.account_balance || 0) + sellerAmount).toFixed(6)
   );
+
   const nextSellerEarnings = Number(
     (Number(seller.earnings_xrp || 0) + sellerAmount).toFixed(6)
   );
@@ -454,6 +465,7 @@ const buyRecipeWithBalance = async (userId, recipeId) => {
       .single();
 
     if (createChefRecordError) throw createChefRecordError;
+
     recordId = newChefRecord.record_id;
   }
 
@@ -482,19 +494,38 @@ const buyRecipeWithBalance = async (userId, recipeId) => {
 
   if (createRecipePurchaseError) throw createRecipePurchaseError;
 
-  await createWalletTransaction({
+  const walletTx = await createWalletTransaction({
     userId,
     type: "purchase",
     direction: "debit",
     amount: price,
     status: "completed",
-    description: `Purchased recipe: ${recipe.title}`,
+    description: `Purchased recipe: ${recipe.title || "Recipe"}`,
     referenceTable: "payments",
     referenceId: payment.payment_id,
   });
 
+  await activityService.logActivity({
+    userId,
+    type: "purchase",
+    title: recipe.title || "Recipe Purchase",
+    description: `Purchased recipe: ${recipe.title || "Recipe"}`,
+    amountXrp: price,
+    status: "completed",
+    referenceTable: "payments",
+    referenceId: payment.payment_id,
+    metadata: {
+      recipe_id: recipeId,
+      seller_id: recipe.chef_id,
+      wallet_transaction_id: walletTx?.transaction_id || walletTx?.id || null,
+    },
+  });
+
   return {
-    payment,
+    payment: {
+      ...payment,
+      recipe_title: recipe.title,
+    },
     newBalance,
     commissionAmount,
     sellerAmount,
@@ -510,6 +541,7 @@ const requestWithdrawal = async (userId, body) => {
   }
 
   const buyer = await requireBuyer(userId);
+
   if (Number(buyer.account_balance || 0) < amount) {
     throw new Error("Insufficient balance");
   }
@@ -530,6 +562,7 @@ const requestWithdrawal = async (userId, body) => {
     .single();
 
   if (error) throw error;
+
   return data;
 };
 
@@ -567,6 +600,7 @@ const requestRefund = async (userId, body) => {
     .single();
 
   if (insertError) throw insertError;
+
   return data;
 };
 
