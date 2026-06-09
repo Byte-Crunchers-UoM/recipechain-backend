@@ -500,7 +500,7 @@ const buyRecipeWithBalance = async (userId, recipeId) => {
     direction: "debit",
     amount: price,
     status: "completed",
-    description: `Purchased recipe: ${recipe.title}`,
+    description: `Purchased recipe: ${recipe.title || "Recipe"}`,
     referenceTable: "payments",
     referenceId: payment.payment_id,
   });
