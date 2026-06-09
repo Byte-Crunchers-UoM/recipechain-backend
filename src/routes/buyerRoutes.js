@@ -30,7 +30,7 @@ router.get("/me/profile", requireSession, getMyBuyerProfile);
 router.patch(
   "/me/profile",
   requireSession,
-  upload.single("profilePhoto"), // Accept one profile photo file from the frontend form.
+  upload.single("profilePhoto"),
   updateMyBuyerProfile
 );
 
@@ -52,7 +52,7 @@ router.get(
 router.post(
   "/me/cookbook/:recipeId/review",
   requireSession,
-  upload.array("photos", 5), // Allow up to 5 optional review photos.
+  upload.array("photos", 5),
   upsertMyCookbookRecipeReview
 );
 

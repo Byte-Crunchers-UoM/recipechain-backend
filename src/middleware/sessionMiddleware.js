@@ -1,4 +1,30 @@
+// src/middleware/sessionMiddleware.js
+
 import jwt from "jsonwebtoken";
+
+/**
+ * Builds a consistent session/user object from the decoded JWT payload.
+ *
+ * @param {object} payload - Decoded JWT payload.
+ * @returns {object} Normalized authenticated user/session data.
+ */
+const normalizeSessionPayload = (payload) => {
+  const normalizedPayload =
+    payload && typeof payload === "object" ? payload : {};
+
+  const userId =
+    normalizedPayload.user_id ||
+    normalizedPayload.id ||
+    normalizedPayload.sub ||
+    null;
+
+  return {
+    ...normalizedPayload,
+    user_id: userId,
+    email: normalizedPayload.email,
+    role: normalizedPayload.role ?? null,
+  };
+};
 
 /**
  * Requires a valid RecipeChain session cookie before allowing the request to continue.
@@ -40,25 +66,29 @@ export const requireSession = (req, res, next) => {
      * jwt.verify checks that the session token was created by this backend
      * and has not been modified or expired.
      */
-    const payload = jwt.verify(token, secret);
+    const decoded = jwt.verify(token, secret);
+    const sessionUser = normalizeSessionPayload(decoded);
+
+    if (!sessionUser.user_id) {
+      return res.status(401).json({
+        ok: false,
+        message: "Authenticated user not found in session",
+      });
+    }
 
     /**
      * Keep req.session for older controller/service code that already depends on it.
      * This avoids breaking existing working APIs during refactoring.
      */
-    req.session = payload;
+    req.session = sessionUser;
 
     /**
      * Also expose normalized user data through req.user for newer controller code.
      * This gives the backend one clean shape for authenticated user details.
      */
-    req.user = {
-      user_id: payload.user_id,
-      email: payload.email,
-      role: payload.role ?? null,
-    };
+    req.user = sessionUser;
 
-    next();
+    return next();
   } catch (error) {
     console.error("requireSession error:", error);
 
@@ -99,16 +129,19 @@ export const optionalSession = (req, _res, next) => {
      * If the cookie is valid, attach user details just like requireSession().
      * If it is invalid, the catch block will continue as a guest user.
      */
-    const payload = jwt.verify(token, secret);
+    const decoded = jwt.verify(token, secret);
+    const sessionUser = normalizeSessionPayload(decoded);
 
-    req.session = payload;
-    req.user = {
-      user_id: payload.user_id,
-      email: payload.email,
-      role: payload.role ?? null,
-    };
+    if (!sessionUser.user_id) {
+      req.session = null;
+      req.user = null;
+      return next();
+    }
 
-    next();
+    req.session = sessionUser;
+    req.user = sessionUser;
+
+    return next();
   } catch {
     /**
      * Optional auth should never break public pages.
@@ -116,6 +149,11 @@ export const optionalSession = (req, _res, next) => {
      */
     req.session = null;
     req.user = null;
-    next();
+    return next();
   }
+};
+
+export default {
+  requireSession,
+  optionalSession,
 };

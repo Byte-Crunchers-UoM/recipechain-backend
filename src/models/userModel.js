@@ -381,6 +381,7 @@ export const upsertWeb3AuthUserModel = async (
 
   return existingUser;
 };
+
 /**
  * Updates user role by email.
  *

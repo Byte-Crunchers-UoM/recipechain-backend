@@ -1,3 +1,5 @@
+// src/index.js
+
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -9,8 +11,9 @@ import { testConnection } from "./config/supabase.js";
 
 import userRoutes from "./routes/userRoutes.js";
 import buyerRoutes from "./routes/buyerRoutes.js";
-import sellerRoutes from "./routes/sellerRoutes.js";
 import recipeRoutes from "./routes/recipeRoutes.js";
+import savedRecipeRoutes from "./routes/savedRecipeRoutes.js";
+import sellerRoutes from "./routes/sellerRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import walletRoutes from "./routes/walletRoutes.js";
 import stripeRoutes from "./routes/stripeRoutes.js";
@@ -29,7 +32,11 @@ app.use(
 
 app.use(cookieParser());
 
-// Stripe webhook route must come BEFORE express.json()
+/**
+ * Stripe webhook route must come BEFORE express.json().
+ * This is important because Stripe webhook signature verification usually
+ * requires the raw request body.
+ */
 app.use("/api/stripe", stripeRoutes);
 
 // Normal body parsers for the rest of the app
@@ -49,6 +56,7 @@ app.get("/", (req, res) => {
 app.get("/test-db", async (req, res) => {
   try {
     const ok = await testConnection();
+
     res.json({
       success: ok,
       message: ok ? "Supabase OK" : "Supabase failed",
@@ -61,12 +69,13 @@ app.get("/test-db", async (req, res) => {
   }
 });
 
-// Routes
+// API routes
 app.use("/api", userRoutes);
+app.use("/api/auth", authRoutes);
 app.use("/api/buyer", buyerRoutes);
 app.use("/api/sellers", sellerRoutes);
 app.use("/api/recipes", recipeRoutes);
-app.use("/api/auth", authRoutes);
+app.use("/api/savedrecipes", savedRecipeRoutes);
 app.use("/api/wallet", walletRoutes);
 
 // Error handler
@@ -76,6 +85,7 @@ app.use(errorHandler);
 const startServer = async () => {
   try {
     await testConnection();
+
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
       console.log(

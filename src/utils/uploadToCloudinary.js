@@ -10,6 +10,10 @@ import streamifier from "streamifier";
  */
 export const uploadBufferToCloudinary = (fileBuffer, options = {}) => {
   return new Promise((resolve, reject) => {
+    if (!fileBuffer) {
+      return reject(new Error("File buffer is required for Cloudinary upload"));
+    }
+
     /**
      * Cloudinary upload_stream accepts file data as a stream.
      * Wrapping it in a Promise makes it easier to use with async/await.
@@ -17,8 +21,11 @@ export const uploadBufferToCloudinary = (fileBuffer, options = {}) => {
     const stream = cloudinary.uploader.upload_stream(
       options,
       (error, result) => {
-        if (error) return reject(error);
-        resolve(result);
+        if (error) {
+          return reject(error);
+        }
+
+        return resolve(result);
       }
     );
 
