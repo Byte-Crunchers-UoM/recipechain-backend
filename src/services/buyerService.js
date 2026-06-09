@@ -1,22 +1,36 @@
 import { supabase } from "../config/supabase.js";
 import { uploadBufferToCloudinary } from "../utils/uploadToCloudinary.js";
 
+/**
+ * Keeps display name safe and readable.
+ * If the user gives an invalid/too-short name, fallback prevents empty profile names.
+ */
 const sanitizeDisplayName = (value, fallback) => {
   const cleaned = String(value || "").trim();
   if (cleaned.length >= 3) return cleaned;
   return fallback;
 };
 
+/**
+ * Limits bio length so very large text cannot be stored/displayed in the profile UI.
+ */
 const sanitizeBio = (value) => {
   return String(value || "").trim().slice(0, 500);
 };
 
+/**
+ * Uses email as fallback profile name when buyer has not set a display name yet.
+ */
 const getEmailFallbackName = (email) => {
   const safeEmail = String(email || "").trim();
   if (!safeEmail) return "Buyer";
   return safeEmail;
 };
 
+/**
+ * Builds achievement/badge state from buyer activity statistics.
+ * These values are calculated for display only; they do not need separate DB rows.
+ */
 const computeBuyerBadges = ({
   totalPurchases = 0,
   totalSpentXrp = 0,
@@ -57,6 +71,17 @@ const computeBuyerBadges = ({
   ];
 };
 
+/**
+ * Builds the complete buyer profile response used by the frontend profile page.
+ *
+ * This combines data from several tables because profile UI needs:
+ * - buyer profile data
+ * - user email/wallet data
+ * - saved recipe count
+ * - review count
+ * - recent payment activity
+ * - calculated badges
+ */
 const buildBuyerProfile = async (userId) => {
   const { data: buyer, error: buyerError } = await supabase
     .from("buyers")
@@ -68,6 +93,7 @@ const buildBuyerProfile = async (userId) => {
 
   if (buyerError) throw buyerError;
 
+  // Email, wallet address, created date, and role belong to the shared users table.
   const { data: user, error: userError } = await supabase
     .from("users")
     .select("user_id, email, wallet_address, created_at, role")
@@ -76,6 +102,7 @@ const buildBuyerProfile = async (userId) => {
 
   if (userError) throw userError;
 
+  // Count query avoids downloading full saved recipe rows when only the count is needed.
   const { count: savedRecipesCount, error: savedRecipesError } = await supabase
     .from("saved_recipes")
     .select("*", { count: "exact", head: true })
@@ -83,6 +110,7 @@ const buildBuyerProfile = async (userId) => {
 
   if (savedRecipesError) throw savedRecipesError;
 
+  // Review count is used for profile stats and community badge calculation.
   const { count: feedbackCount, error: feedbackError } = await supabase
     .from("feedbacks")
     .select("*", { count: "exact", head: true })
@@ -90,6 +118,7 @@ const buildBuyerProfile = async (userId) => {
 
   if (feedbackError) throw feedbackError;
 
+  // Recent payments are used to show recent buyer activity on the profile page.
   const { data: recentPayments, error: paymentsError } = await supabase
     .from("payments")
     .select("payment_id, amount, status, time_stamp, recipe_id")
@@ -106,6 +135,7 @@ const buildBuyerProfile = async (userId) => {
   let recipeMap = {};
 
   if (recipeIds.length > 0) {
+    // Fetch recipe titles in one query so recent activity can show meaningful names.
     const { data: recipes, error: recipesError } = await supabase
       .from("recipes")
       .select("recipe_id, title")
@@ -151,15 +181,26 @@ const buildBuyerProfile = async (userId) => {
     feedback_count: Number(feedbackCount || 0),
     badges,
     recent_activity: recentActivity,
+
+    // These are currently placeholders so the frontend can render consistent profile UI.
     notification_count: 0,
     cart_count: 0,
   };
 };
 
+/**
+ * Returns the logged-in buyer's profile.
+ */
 const getBuyerProfile = async ({ userId }) => {
   return await buildBuyerProfile(userId);
 };
 
+/**
+ * Updates buyer profile details and optional profile image.
+ *
+ * Text fields are sanitized here, while image file type/size is checked before upload.
+ * After update, the full rebuilt profile is returned so frontend receives fresh data.
+ */
 const updateBuyerProfile = async ({ userId, body, file }) => {
   const { data: existingBuyer, error: existingBuyerError } = await supabase
     .from("buyers")
@@ -183,11 +224,13 @@ const updateBuyerProfile = async ({ userId, body, file }) => {
   );
   const bio = sanitizeBio(body.bio);
 
+  // Keep old profile picture if the user updates only text fields.
   let profilePicture = existingBuyer.profile_picture || "";
 
   if (file) {
     const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
 
+    // File validation is repeated on backend because frontend validation can be bypassed.
     if (!allowedTypes.includes(file.mimetype)) {
       throw new Error("Only JPG, PNG, and WEBP images are allowed");
     }
@@ -196,6 +239,7 @@ const updateBuyerProfile = async ({ userId, body, file }) => {
       throw new Error("Profile image must be 5MB or less");
     }
 
+    // Safe public_id avoids spaces/special characters in Cloudinary asset names.
     const safeBaseName = displayName
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
@@ -230,6 +274,7 @@ const updateBuyerProfile = async ({ userId, body, file }) => {
 
   if (updateError) throw updateError;
 
+  // Return rebuilt profile so frontend immediately gets updated image/name/bio/stat data.
   return await buildBuyerProfile(userId);
 };
 

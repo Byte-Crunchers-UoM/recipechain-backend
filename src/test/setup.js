@@ -1,0 +1,9 @@
+process.env.NODE_ENV = "test";
+process.env.SESSION_SECRET = "test-session-secret";
+process.env.SUPABASE_URL = "https://test.supabase.co";
+process.env.SUPABASE_ANON_KEY = "test-anon-key";
+process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
+process.env.WEB3AUTH_CLIENT_ID = "test-web3auth-client-id";
+process.env.CLOUDINARY_CLOUD_NAME = "test-cloud";
+process.env.CLOUDINARY_API_KEY = "test-key";
+process.env.CLOUDINARY_API_SECRET = "test-secret";

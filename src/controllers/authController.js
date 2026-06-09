@@ -1,12 +1,15 @@
 // src/controllers/authController.js
+
 import jwt from "jsonwebtoken";
 import { supabase } from "../config/supabase.js";
 import userService from "../services/userService.js";
 
 /**
- * ADMIN LOGIN
- * POST /api/auth/admin-login
- * Body: { email, password }
+ * Logs in an admin using Supabase Auth and confirms the user has admin role.
+ *
+ * @param {import("express").Request} req - Express request containing email and password.
+ * @param {import("express").Response} res - Express response used to return login result.
+ * @returns {Promise<void>}
  */
 export const adminLogin = async (req, res) => {
   const { email, password } = req.body;
@@ -14,6 +17,7 @@ export const adminLogin = async (req, res) => {
   try {
     console.log("Login attempt for:", email);
 
+    // Supabase Auth verifies the password, so the backend never handles raw password checking manually.
     const { data: authData, error: authError } =
       await supabase.auth.signInWithPassword({
         email,
@@ -26,6 +30,7 @@ export const adminLogin = async (req, res) => {
 
     const userId = authData.user.id;
 
+    // Supabase Auth confirms identity, but the users table confirms the app-level role.
     const { data: userData, error: userError } = await supabase
       .from("users")
       .select("role")
@@ -36,6 +41,7 @@ export const adminLogin = async (req, res) => {
       return res.status(403).json({ message: "You are not an Admin" });
     }
 
+    // Admin profile data is stored separately from the shared users table.
     const { data: profileData, error: profileError } = await supabase
       .from("admins")
       .select("username")
@@ -65,25 +71,62 @@ export const adminLogin = async (req, res) => {
   }
 };
 
+/**
+ * Creates a signed app session token for RecipeChain.
+ *
+ * @param {object} payload - User data stored inside the session token.
+ * @returns {string} Signed JWT session token.
+ */
 const makeSessionToken = (payload) => {
   const secret = process.env.SESSION_SECRET;
-  if (!secret) throw new Error("Missing SESSION_SECRET");
+
+  if (!secret) {
+    throw new Error("Missing SESSION_SECRET");
+  }
+
   return jwt.sign(payload, secret, { expiresIn: "7d" });
 };
 
+/**
+ * Stores the RecipeChain session token in an HTTP-only cookie.
+ *
+ * @param {import("express").Response} res - Express response used to set cookie.
+ * @param {string} token - Signed session token.
+ * @returns {void}
+ */
 const setSessionCookie = (res, token) => {
   res.cookie("rc_session", token, {
+    // httpOnly protects the session from being read directly by frontend JavaScript.
     httpOnly: true,
+
+    // lax keeps normal navigation/login flows working while reducing CSRF exposure.
     sameSite: "lax",
+
+    // Keep false for local development HTTP. Use true in production with HTTPS.
     secure: false,
+
     path: "/",
+
+    // Session lifetime matches the JWT expiry period.
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 };
 
+/**
+ * Syncs a Web3Auth-authenticated user with the RecipeChain database.
+ *
+ * @param {import("express").Request} req - Express request with verified Web3Auth user data.
+ * @param {import("express").Response} res - Express response used to return synced user.
+ * @returns {Promise<void>}
+ */
 export const syncWeb3AuthUser = async (req, res) => {
   try {
+    /**
+     * req.web3auth should be attached by Web3Auth verification middleware.
+     * This controller trusts it only after middleware has already verified the token.
+     */
     const email = req.web3auth?.email;
+
     const authProvider =
       req.web3auth?.authConnection ||
       req.web3auth?.groupedAuthConnectionId ||
@@ -110,15 +153,25 @@ export const syncWeb3AuthUser = async (req, res) => {
       });
     }
 
+    const normalizedEmail = email.toLowerCase();
+
+    /**
+     * This service handles database-level user creation/update logic.
+     * Keeping it in the service layer keeps the controller focused on HTTP flow.
+     */
     const user = await userService.syncWeb3AuthUser(
-      email.toLowerCase(),
+      normalizedEmail,
       walletAddress,
       authProvider
     );
 
+    /**
+     * Buyer identity is hydrated from Web3Auth so the profile has basic display data
+     * even before the buyer manually edits their profile.
+     */
     await userService.hydrateBuyerIdentityFromWeb3Auth({
       userId: user.user_id,
-      email: email.toLowerCase(),
+      email: normalizedEmail,
       name,
       profileImage,
     });
@@ -140,6 +193,10 @@ export const syncWeb3AuthUser = async (req, res) => {
 
     const message = error?.message || "Server error";
 
+    /**
+     * Provider mismatch should be shown as a user-fixable conflict,
+     * not as a generic server failure.
+     */
     if (message.includes("already registered with")) {
       return res.status(409).json({ ok: false, message });
     }
@@ -149,9 +206,17 @@ export const syncWeb3AuthUser = async (req, res) => {
 };
 
 /**
- * POST /api/auth/logout
+ * Clears the RecipeChain session cookie.
+ *
+ * @param {import("express").Request} req - Express request.
+ * @param {import("express").Response} res - Express response used to clear cookie.
+ * @returns {Promise<void>}
  */
 export const logout = async (req, res) => {
   res.clearCookie("rc_session", { path: "/" });
-  return res.json({ ok: true, message: "Logged out" });
+
+  return res.json({
+    ok: true,
+    message: "Logged out",
+  });
 };

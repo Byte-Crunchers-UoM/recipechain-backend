@@ -11,10 +11,12 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error("Missing SUPABASE_URL or SUPABASE_ANON_KEY in .env");
 }
 
-// existing client (used by admin auth etc.)
+if (!supabaseServiceRoleKey) {
+  console.warn("Missing SUPABASE_SERVICE_ROLE_KEY in .env");
+}
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// NEW: server-only admin client for writing user/buyer rows
 export const supabaseAdmin = supabaseServiceRoleKey
   ? createClient(supabaseUrl, supabaseServiceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
@@ -25,6 +27,7 @@ export const testConnection = async () => {
   try {
     const { error } = await supabase.auth.getSession();
     if (error) throw error;
+
     console.log("Supabase connected successfully");
     return true;
   } catch (error) {

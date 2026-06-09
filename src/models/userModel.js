@@ -1,12 +1,18 @@
 import { supabase, supabaseAdmin } from "../config/supabase.js";
 
-// =====================================================
-// HELPERS
-// =====================================================
-
+/**
+ * Marks a user account as deletion requested instead of deleting it immediately.
+ *
+ * @param {string} userId - User ID of the account owner.
+ * @returns {Promise<object>} Updated user row.
+ */
 export const requestAccountDeletionByUserIdModel = async (userId) => {
   const admin = requireAdminClient();
 
+  /**
+   * This is a soft-delete request flow.
+   * It keeps the account data available for admin review or delayed deletion.
+   */
   const { data, error } = await admin
     .from("users")
     .update({
@@ -21,32 +27,70 @@ export const requestAccountDeletionByUserIdModel = async (userId) => {
   return data;
 };
 
+/**
+ * Returns the Supabase admin client or throws a clear configuration error.
+ *
+ * @returns {object} Supabase admin client.
+ */
 const requireAdminClient = () => {
   if (!supabaseAdmin) {
+    /**
+     * Admin client is needed for protected server-side operations that may bypass
+     * normal user-level Supabase permissions.
+     */
     throw new Error("SUPABASE_SERVICE_ROLE_KEY missing in backend .env");
   }
 
   return supabaseAdmin;
 };
 
+/**
+ * Normalizes emails before storing/searching to prevent duplicate accounts
+ * with different casing or extra spaces.
+ *
+ * @param {string} email - Raw email value.
+ * @returns {string} Normalized email.
+ */
 const normalizeEmail = (email) => {
   return String(email || "").trim().toLowerCase();
 };
 
+/**
+ * Normalizes wallet address input before storing it.
+ *
+ * @param {string} walletAddress - Raw XRPL wallet address.
+ * @returns {string} Trimmed wallet address.
+ */
 const normalizeWalletAddress = (walletAddress) => {
   return String(walletAddress || "").trim();
 };
 
+/**
+ * Builds a readable default display name from email.
+ *
+ * @param {string} email - User email.
+ * @returns {string} Email prefix or fallback name.
+ */
 const getEmailPrefix = (email) => {
   const normalizedEmail = normalizeEmail(email);
   const prefix = normalizedEmail.split("@")[0]?.trim();
+
   return prefix || "buyer";
 };
 
+/**
+ * Permanently deletes a buyer account and dependent buyer-side records.
+ *
+ * @param {string} userId - User ID of the buyer.
+ * @returns {Promise<{success: boolean}>} Delete result.
+ */
 export const deleteMyBuyerAccountPermanentlyByUserIdModel = async (userId) => {
   const admin = requireAdminClient();
 
-  // Delete child/dependent buyer-side records first
+  /**
+   * Delete child/dependent records first to avoid foreign-key constraint errors.
+   * The base users row is deleted last because other tables depend on it.
+   */
   const { error: savedRecipesError } = await admin
     .from("saved_recipes")
     .delete()
@@ -85,10 +129,13 @@ export const deleteMyBuyerAccountPermanentlyByUserIdModel = async (userId) => {
   return { success: true };
 };
 
-// =====================================================
-// EXISTING CRUD
-// =====================================================
-
+/**
+ * Creates a basic user row.
+ *
+ * @param {string} username - User display username.
+ * @param {string} email - User email address.
+ * @returns {Promise<object>} Created user row.
+ */
 export const createUserModel = async (username, email) => {
   const { data, error } = await supabase
     .from("users")
@@ -105,6 +152,12 @@ export const createUserModel = async (username, email) => {
   return data;
 };
 
+/**
+ * Finds a user by user_id.
+ *
+ * @param {string} id - User ID.
+ * @returns {Promise<object|null>} User row or null when not found.
+ */
 export const getUserByIdModel = async (id) => {
   const { data, error } = await supabase
     .from("users")
@@ -112,10 +165,20 @@ export const getUserByIdModel = async (id) => {
     .eq("user_id", id)
     .single();
 
+  /**
+   * PGRST116 means no row was found.
+   * Returning null lets the service/controller handle "not found" cleanly.
+   */
   if (error && error.code !== "PGRST116") throw error;
   return data;
 };
 
+/**
+ * Finds a user by normalized email.
+ *
+ * @param {string} email - User email address.
+ * @returns {Promise<object|null>} User row or null when not found.
+ */
 export const getUserByEmailModel = async (email) => {
   const normalizedEmail = normalizeEmail(email);
 
@@ -125,10 +188,19 @@ export const getUserByEmailModel = async (email) => {
     .eq("email", normalizedEmail)
     .single();
 
+  /**
+   * Missing user is not always an error because signup/sync flows may need
+   * to check whether an account already exists.
+   */
   if (error && error.code !== "PGRST116") throw error;
   return data;
 };
 
+/**
+ * Returns all users, newest first.
+ *
+ * @returns {Promise<object[]>} User rows.
+ */
 export const getAllUsersModel = async () => {
   const { data, error } = await supabase
     .from("users")
@@ -139,6 +211,14 @@ export const getAllUsersModel = async () => {
   return data;
 };
 
+/**
+ * Updates username and email for a user.
+ *
+ * @param {string} id - User ID.
+ * @param {string} username - New username.
+ * @param {string} email - New email.
+ * @returns {Promise<object>} Updated user row.
+ */
 export const updateUserModel = async (id, username, email) => {
   const { data, error } = await supabase
     .from("users")
@@ -154,6 +234,12 @@ export const updateUserModel = async (id, username, email) => {
   return data;
 };
 
+/**
+ * Deletes a user by user_id.
+ *
+ * @param {string} id - User ID.
+ * @returns {Promise<object>} Deleted user row.
+ */
 export const deleteUserModel = async (id) => {
   const { data, error } = await supabase
     .from("users")
@@ -166,22 +252,32 @@ export const deleteUserModel = async (id) => {
   return data;
 };
 
-// =====================================================
-// Web3Auth + XRPL Integration
-// =====================================================
-
+/**
+ * Converts provider names from Web3Auth into one stable internal value.
+ *
+ * @param {string} provider - Raw provider name from Web3Auth.
+ * @returns {string} Normalized provider name.
+ */
 function normalizeAuthProvider(provider) {
   const raw = String(provider || "").toLowerCase().trim();
 
   if (raw.includes("google")) return "google";
   if (raw.includes("facebook")) return "facebook";
-  if (raw.includes("twitter") || raw === "x" || raw.includes("x-twitter")) return "x";
+  if (raw.includes("twitter") || raw === "x" || raw.includes("x-twitter")) {
+    return "x";
+  }
   if (raw.includes("github")) return "github";
   if (raw.includes("email") || raw.includes("passwordless")) return "email";
 
   return raw || "unknown";
 }
 
+/**
+ * Converts internal provider values into user-friendly names for error messages.
+ *
+ * @param {string} provider - Raw or normalized provider.
+ * @returns {string} User-facing provider name.
+ */
 function formatAuthProvider(provider) {
   const normalized = normalizeAuthProvider(provider);
 
@@ -197,6 +293,14 @@ function formatAuthProvider(provider) {
   return map[normalized] || provider;
 }
 
+/**
+ * Creates or updates a Web3Auth user in the users table.
+ *
+ * @param {string} email - Verified email from Web3Auth token.
+ * @param {string} walletAddress - XRPL wallet address derived from Web3Auth private key.
+ * @param {string} authProvider - Web3Auth provider used for login/signup.
+ * @returns {Promise<object>} Created or existing user row.
+ */
 export const upsertWeb3AuthUserModel = async (
   email,
   walletAddress,
@@ -216,7 +320,10 @@ export const upsertWeb3AuthUserModel = async (
 
   if (error) throw error;
 
-  // New user -> create
+  /**
+   * New Web3Auth user:
+   * create a base users row first; buyer/seller rows are created later based on role.
+   */
   if (!existingUser) {
     const { data, error: insertError } = await admin
       .from("users")
@@ -234,7 +341,10 @@ export const upsertWeb3AuthUserModel = async (
 
   const existingProvider = normalizeAuthProvider(existingUser.auth_provider);
 
-  // Same email + different provider -> block
+  /**
+   * Same email with different provider is blocked to avoid accidentally linking
+   * two different Web3Auth identities to one RecipeChain account.
+   */
   if (existingProvider && existingProvider !== normalizedProvider) {
     const providerName = formatAuthProvider(existingProvider);
 
@@ -243,8 +353,10 @@ export const upsertWeb3AuthUserModel = async (
     );
   }
 
-  // Same provider -> allow existing account
-  // Backfill missing values only
+  /**
+   * Existing same-provider account:
+   * only backfill missing fields so we do not overwrite existing stable identity data.
+   */
   const updates = {};
 
   if (!existingUser.auth_provider) {
@@ -270,10 +382,13 @@ export const upsertWeb3AuthUserModel = async (
   return existingUser;
 };
 
-// =====================================================
-// Role Handling
-// =====================================================
-
+/**
+ * Updates user role by email.
+ *
+ * @param {string} email - User email.
+ * @param {string} role - Selected app role.
+ * @returns {Promise<object>} Updated user row.
+ */
 export const setUserRoleModel = async (email, role) => {
   const admin = requireAdminClient();
 
@@ -288,9 +403,20 @@ export const setUserRoleModel = async (email, role) => {
   return data;
 };
 
+/**
+ * Updates user role by user_id.
+ *
+ * @param {string} userId - User ID.
+ * @param {string} role - Selected app role.
+ * @returns {Promise<object>} Updated user row.
+ */
 export const setUserRoleByUserIdModel = async (userId, role) => {
   const admin = requireAdminClient();
 
+  /**
+   * user_id is preferred after login because it comes from the verified session,
+   * not from editable frontend input.
+   */
   const { data, error } = await admin
     .from("users")
     .update({ role: String(role || "").trim().toLowerCase() })
@@ -302,10 +428,12 @@ export const setUserRoleByUserIdModel = async (userId, role) => {
   return data;
 };
 
-// =====================================================
-// Session-based Fetch
-// =====================================================
-
+/**
+ * Fetches current session user by user_id.
+ *
+ * @param {string} userId - User ID from verified session.
+ * @returns {Promise<object>} User row.
+ */
 export const getUserByUserIdModel = async (userId) => {
   const admin = requireAdminClient();
 
@@ -319,10 +447,13 @@ export const getUserByUserIdModel = async (userId) => {
   return data;
 };
 
-// =====================================================
-// Buyer / Seller Helpers
-// =====================================================
-
+/**
+ * Ensures a buyer profile row exists for the given user.
+ *
+ * @param {string} userId - User ID.
+ * @param {string} email - User email used for fallback display name.
+ * @returns {Promise<object>} Existing or created buyer row.
+ */
 export const ensureBuyerRowModel = async (userId, email) => {
   const admin = requireAdminClient();
 
@@ -334,13 +465,20 @@ export const ensureBuyerRowModel = async (userId, email) => {
 
   if (findError) throw findError;
 
-  // If row already exists, keep it
+  /**
+   * If the buyer row already exists, keep it unchanged.
+   * This prevents resetting profile data during repeated login/session sync.
+   */
   if (existingBuyer) {
     return existingBuyer;
   }
 
   const displayName = getEmailPrefix(email);
 
+  /**
+   * New buyer profiles start with safe defaults so buyer profile pages
+   * can render immediately after role selection.
+   */
   const { data, error } = await admin
     .from("buyers")
     .insert({
@@ -359,6 +497,12 @@ export const ensureBuyerRowModel = async (userId, email) => {
   return data;
 };
 
+/**
+ * Ensures a seller profile row exists for the given user.
+ *
+ * @param {string} userId - User ID.
+ * @returns {Promise<object>} Existing or created seller row.
+ */
 export const ensureSellerRowModel = async (userId) => {
   const admin = requireAdminClient();
 
@@ -369,8 +513,17 @@ export const ensureSellerRowModel = async (userId) => {
     .maybeSingle();
 
   if (findError) throw findError;
+
+  /**
+   * Existing seller rows should not be recreated because they may already
+   * contain KYC status, rejection details, or document metadata.
+   */
   if (existingSeller) return existingSeller;
 
+  /**
+   * Seller starts with null verification status until KYC is submitted.
+   * The frontend KYC page uses this state to show the form.
+   */
   const { data, error } = await admin
     .from("sellers")
     .insert({
