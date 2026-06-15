@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "../config/supabase.js";
 import { uploadBufferToCloudinary } from "../utils/uploadToCloudinary.js";
+import activityService from "./activityService.js";
 
 const MAX_REVIEW_IMAGES = 5;
 const MAX_REVIEW_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
@@ -45,7 +46,9 @@ function validateReviewFiles(files = []) {
   if (!Array.isArray(files)) return;
 
   if (files.length > MAX_REVIEW_IMAGES) {
-    const err = new Error(`You can upload up to ${MAX_REVIEW_IMAGES} photos only`);
+    const err = new Error(
+      `You can upload up to ${MAX_REVIEW_IMAGES} photos only`
+    );
     err.statusCode = 400;
     throw err;
   }
@@ -145,6 +148,32 @@ async function getFeedbackImages(feedbackId) {
 }
 
 /**
+ * Gets a recipe title for activity logging.
+ * Activity logging should not break the review flow, so this helper is safe.
+ */
+async function getRecipeTitleForActivity(recipeId) {
+  const admin = requireAdminClient();
+
+  try {
+    const { data, error } = await admin
+      .from("recipes")
+      .select("recipe_id, title")
+      .eq("recipe_id", recipeId)
+      .maybeSingle();
+
+    if (error) {
+      console.error("getRecipeTitleForActivity failed:", error);
+      return "Recipe";
+    }
+
+    return data?.title || "Recipe";
+  } catch (error) {
+    console.error("getRecipeTitleForActivity crashed:", error);
+    return "Recipe";
+  }
+}
+
+/**
  * Returns the logged-in buyer's cookbook items.
  * Supports search, review-status filtering, and favorites-only filtering.
  */
@@ -156,10 +185,6 @@ async function getMyCookbook({
 }) {
   const admin = requireAdminClient();
 
-  /**
-   * Purchases are the source of truth for cookbook access.
-   * If a recipe is not in recipe_purchases, it should not appear in My Cookbook.
-   */
   const { data: purchases, error: purchaseError } = await admin
     .from("recipe_purchases")
     .select("purchase_id, recipe_id, unlocked_at")
@@ -174,13 +199,10 @@ async function getMyCookbook({
 
   const recipeIds = purchases.map((item) => item.recipe_id);
 
-  /**
-   * Fetch recipes in one query instead of one query per purchase.
-   * This is faster and avoids unnecessary database calls.
-   */
   const { data: recipes, error: recipeError } = await admin
     .from("recipes")
-    .select(`
+    .select(
+      `
       recipe_id,
       title,
       description,
@@ -194,15 +216,12 @@ async function getMyCookbook({
       chef_id,
       created_at,
       status
-    `)
+    `
+    )
     .in("recipe_id", recipeIds);
 
   if (recipeError) throw recipeError;
 
-  /**
-   * Fetch buyer feedbacks for these recipes so each cookbook card can show
-   * whether the buyer already reviewed the recipe.
-   */
   const { data: feedbacks, error: feedbackError } = await admin
     .from("feedbacks")
     .select("feedback_id, recipe_id, buyer_id, rating, comment, created_at")
@@ -211,9 +230,6 @@ async function getMyCookbook({
 
   if (feedbackError) throw feedbackError;
 
-  /**
-   * Fetch saved recipes so cookbook cards can show favorite state immediately.
-   */
   const { data: savedRecipes, error: savedError } = await admin
     .from("saved_recipes")
     .select("saved_id, recipe_id")
@@ -305,7 +321,8 @@ async function getCookbookRecipeDetails({ buyerId, recipeId }) {
 
   const { data: recipe, error: recipeError } = await admin
     .from("recipes")
-    .select(`
+    .select(
+      `
       recipe_id,
       title,
       description,
@@ -322,7 +339,8 @@ async function getCookbookRecipeDetails({ buyerId, recipeId }) {
       ingredients,
       instructions,
       status
-    `)
+    `
+    )
     .eq("recipe_id", recipeId)
     .single();
 
@@ -368,7 +386,8 @@ async function getCookbookRecipeForReview({ buyerId, recipeId }) {
 
   const { data: recipe, error: recipeError } = await admin
     .from("recipes")
-    .select(`
+    .select(
+      `
       recipe_id,
       title,
       description,
@@ -381,7 +400,8 @@ async function getCookbookRecipeForReview({ buyerId, recipeId }) {
       rating_avg,
       chef_id,
       created_at
-    `)
+    `
+    )
     .eq("recipe_id", recipeId)
     .single();
 
@@ -519,10 +539,6 @@ async function upsertRecipeReview({
   let feedback;
 
   if (existing) {
-    /**
-     * Existing feedback means the buyer is editing their review.
-     * Images are added separately so review text/rating updates do not remove old images.
-     */
     const { data, error } = await admin
       .from("feedbacks")
       .update({
@@ -536,9 +552,6 @@ async function upsertRecipeReview({
     if (error) throw error;
     feedback = data;
   } else {
-    /**
-     * No previous feedback means this is the buyer's first review for this recipe.
-     */
     const { data, error } = await admin
       .from("feedbacks")
       .insert({
@@ -562,6 +575,25 @@ async function upsertRecipeReview({
   });
 
   const ratingAvg = await recalculateRecipeRating(recipeId);
+  const recipeTitle = await getRecipeTitleForActivity(recipeId);
+
+  await activityService.logActivity({
+    userId: buyerId,
+    type: "review",
+    title: recipeTitle || "Recipe Review",
+    description: existing
+      ? `Updated review for ${recipeTitle || "recipe"}`
+      : `Reviewed recipe: ${recipeTitle || "Recipe"}`,
+    amountXrp: 0,
+    status: "completed",
+    referenceTable: "feedbacks",
+    referenceId: feedback.feedback_id,
+    metadata: {
+      recipe_id: recipeId,
+      rating: cleanRating,
+      is_update: Boolean(existing),
+    },
+  });
 
   return {
     feedback: {
