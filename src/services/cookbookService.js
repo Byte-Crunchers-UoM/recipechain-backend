@@ -23,7 +23,9 @@ function requireAdminClient() {
  */
 function normalizeRatingAvg(value) {
   const num = Number(value || 0);
+
   if (!Number.isFinite(num)) return 0;
+
   return Number(num.toFixed(2));
 }
 
@@ -138,6 +140,7 @@ async function getFeedbackImages(feedbackId) {
     .order("created_at", { ascending: true });
 
   if (error) throw error;
+
   return data || [];
 }
 
@@ -473,6 +476,7 @@ async function uploadReviewImages({ buyerId, recipeId, feedbackId, files }) {
 /**
  * Creates or updates the buyer's review for a purchased recipe.
  * A buyer can have one review per recipe, so this uses upsert-style logic.
+ * Rating is required; written comment and photos are optional.
  */
 async function upsertRecipeReview({
   buyerId,
@@ -495,17 +499,13 @@ async function upsertRecipeReview({
     throw err;
   }
 
-  if (!cleanComment) {
-    const err = new Error("Review comment is required");
-    err.statusCode = 400;
-    throw err;
-  }
-
   if (cleanComment.length > 500) {
     const err = new Error("Review comment must be 500 characters or less");
     err.statusCode = 400;
     throw err;
   }
+
+  const commentValue = cleanComment || null;
 
   const { data: existing, error: existingError } = await admin
     .from("feedbacks")
@@ -527,7 +527,7 @@ async function upsertRecipeReview({
       .from("feedbacks")
       .update({
         rating: cleanRating,
-        comment: cleanComment,
+        comment: commentValue,
       })
       .eq("feedback_id", existing.feedback_id)
       .select("feedback_id, buyer_id, recipe_id, rating, comment, created_at")
@@ -545,7 +545,7 @@ async function upsertRecipeReview({
         buyer_id: buyerId,
         recipe_id: recipeId,
         rating: cleanRating,
-        comment: cleanComment,
+        comment: commentValue,
       })
       .select("feedback_id, buyer_id, recipe_id, rating, comment, created_at")
       .single();
