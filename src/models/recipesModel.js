@@ -15,7 +15,11 @@ export const getAllRecipesModel = async()=>{
     .order('created_at',{ascending:false});
     
     if (error) throw error 
-    return data;
+   return data.map(recipe => ({
+      ...recipe,
+      full_name: recipe.sellers?.full_name || "RecipeChain User",
+      price_xrp: recipe.price
+    }));
 };
 
 /**
