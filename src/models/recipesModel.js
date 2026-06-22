@@ -11,7 +11,7 @@ export const getAllRecipesModel = async()=>{
     .from ('recipes')
     .select(`*,
       sellers!inner(full_name)`)
-    .eq('status', 'active')
+    //.eq('status', 'active')
     .order('created_at',{ascending:false});
     
     if (error) throw error 

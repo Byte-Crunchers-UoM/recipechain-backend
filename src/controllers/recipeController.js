@@ -179,14 +179,28 @@ export const getRecipeById = async (req, res, next) => {
             // This function needs to be in your recipeModels.js
             const hasPurchased = await checkPurchaseStatusModel(userId, recipeId);
 
-            console.log("User ID:", userId);
+            // 3. NEW: Check if this is an Admin reviewing the recipe!
+            const { data: profileData } = await supabase
+                .from("users")
+                .select("role")
+                .eq("user_id", userId)
+                .single();
+            const isAdmin = profileData?.role === "admin";
+
+            // If they are the creator, a buyer, OR an admin, unlock it!
+            if (isSeller || hasPurchased || isAdmin) {
+                hasAccess = true;
+            }
+        }
+
+           /* console.log("User ID:", userId);
             console.log("Is Seller?:", isSeller);
             console.log("Has Purchased?:", hasPurchased);
 
             if (isSeller || hasPurchased) {
                 hasAccess = true;
             }
-        }
+        }*/
 
         if (!hasAccess) {
             console.log("🔴 Access Denied: Sending Locked Version");
