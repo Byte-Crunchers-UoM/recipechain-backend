@@ -7,7 +7,8 @@ import {
     deleteRecipe,
     getFilteredRecipes,
     searchRecipes,
-    unlockRecipe 
+    unlockRecipe,
+    verifyRecipe
 } from '../controllers/recipeController.js';
 
 import { requireSession, optionalSession } from '../middleware/sessionmiddleware.js';
@@ -47,5 +48,7 @@ router.put('/:id', requireSession, updateRecipe);
 
 // DELETE
 router.delete('/:id', requireSession, deleteRecipe);
+
+router.patch('/:id/verify', verifyRecipe);
 
 export default router;

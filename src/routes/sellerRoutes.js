@@ -2,8 +2,23 @@ import express from "express";
 import sellerController from "../controllers/sellerController.js";
 import upload from "../middleware/uploadMiddleware.js";
 import { requireSession } from "../middleware/sessionMiddleware.js";
+import { 
+  createSeller, 
+  getAllSellers, 
+  getSellerById, 
+  updateSeller, 
+  deleteSeller,
+  verifySeller
+} from '../controllers/sellerController.js';
 
 const router = express.Router();
+
+router.post('/', createSeller);
+router.get('/', getAllSellers);
+router.get('/:id', getSellerById);
+router.put('/:id', updateSeller);
+router.delete('/:id', deleteSeller);
+router.patch('/:id/verify', verifySeller);
 
 /**
  * Submit seller KYC details with front and back ID document uploads.
@@ -37,5 +52,7 @@ router.patch(
   requireSession,
   sellerController.markKycApprovalPageSeen
 );
+
+router.get('/', getAllSellers);
 
 export default router;

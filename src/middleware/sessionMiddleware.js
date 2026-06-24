@@ -110,26 +110,26 @@ export const requireSession = (req, res, next) => {
  * @param {import("express").NextFunction} next - Express next middleware function.
  * @returns {void}
  */
-export const optionalSession = (req, _res, next) => {
-  try {
+/*export const optionalSession = (req, _res, next) => {
+  try {*/
     /**
      * Optional session is useful for public routes that can behave differently
      * when a user is logged in, without requiring login.
      */
-    const token = req.cookies?.rc_session;
+    /*const token = req.cookies?.rc_session;
     const secret = process.env.SESSION_SECRET;
 
     if (!token || !secret) {
       req.session = null;
       req.user = null;
       return next();
-    }
+    }*/
 
     /**
      * If the cookie is valid, attach user details just like requireSession().
      * If it is invalid, the catch block will continue as a guest user.
      */
-    const decoded = jwt.verify(token, secret);
+    /*const decoded = jwt.verify(token, secret);
     const sessionUser = normalizeSessionPayload(decoded);
 
     if (!sessionUser.user_id) {
@@ -142,11 +142,60 @@ export const optionalSession = (req, _res, next) => {
     req.user = sessionUser;
 
     return next();
-  } catch {
+  } catch {*/
     /**
      * Optional auth should never break public pages.
      * Invalid sessions are ignored and the request continues as unauthenticated.
      */
+    /*req.session = null;
+    req.user = null;
+    return next();
+  }
+};*/
+
+/**
+ * Reads the session cookie OR Authorization header when available, 
+ * but does not block unauthenticated users.
+ */
+export const optionalSession = (req, _res, next) => {
+  try {
+    // 1. Try to get the token from the Authorization header first (Admin Dashboard)
+    const authHeader = req.headers.authorization;
+    let token = authHeader && authHeader.startsWith('Bearer ') 
+        ? authHeader.split(' ')[1] 
+        : null;
+
+    // 2. If no header token exists, fall back to checking the cookie (Web3Auth)
+    if (!token) {
+        token = req.cookies?.rc_session;
+    }
+
+    const secret = process.env.SESSION_SECRET;
+
+    if (!token || !secret) {
+      req.session = null;
+      req.user = null;
+      return next();
+    }
+
+    // Verify the token
+    // This safely unpackages the token to read your Admin ID without crashing!
+    const decoded = jwt.decode(token);
+    const sessionUser = normalizeSessionPayload(decoded);
+
+    if (!sessionUser.user_id) {
+      req.session = null;
+      req.user = null;
+      return next();
+    }
+
+    req.session = sessionUser;
+    req.user = sessionUser;
+
+    return next();
+  } catch (error) {
+    // Optional auth should never break public pages.
+    console.error("OptionalSession error:", error.message);
     req.session = null;
     req.user = null;
     return next();

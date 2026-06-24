@@ -3,22 +3,21 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-import express from "express";
-import cors from "cors";
+import express from 'express';
+import cors from 'cors';
+import { testConnection } from './config/supabase.js';
+import userRoutes from './routes/userRoutes.js';
+import buyerRoutes from './routes/buyerRoutes.js';
+import sellerRoutes from './routes/sellerRoutes.js';
+import recipeRoutes from './routes/recipeRoutes.js';
+import errorHandler from './middleware/errorHandler.js';
+import dashboardRoutes from './routes/dashboardRoutes.js';
 import cookieParser from "cookie-parser";
-
-import { testConnection } from "./config/supabase.js";
-
-import userRoutes from "./routes/userRoutes.js";
-import buyerRoutes from "./routes/buyerRoutes.js";
-import recipeRoutes from "./routes/recipeRoutes.js";
 import savedRecipeRoutes from "./routes/savedRecipeRoutes.js";
-import sellerRoutes from "./routes/sellerRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import walletRoutes from "./routes/walletRoutes.js";
 import stripeRoutes from "./routes/stripeRoutes.js";
 
-import errorHandler from "./middleware/errorHandler.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -70,11 +69,12 @@ app.get("/test-db", async (req, res) => {
 });
 
 // API routes
-app.use("/api", userRoutes);
-app.use("/api/auth", authRoutes);
-app.use("/api/buyer", buyerRoutes);
-app.use("/api/sellers", sellerRoutes);
-app.use("/api/recipes", recipeRoutes);
+app.use('/api', userRoutes);
+app.use('/api/recipes', recipeRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/buyers', buyerRoutes);
+app.use('/api/sellers', sellerRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 app.use("/api/savedrecipes", savedRecipeRoutes);
 app.use("/api/wallet", walletRoutes);
 
@@ -85,17 +85,21 @@ app.use(errorHandler);
 const startServer = async () => {
   try {
     await testConnection();
+    // Start server
+    const environment = process.env.NODE_ENV || 'development';
 
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-      console.log(
-        `Frontend origin: ${process.env.FRONTEND_URL || "http://localhost:3000"}`
-      );
-    });
-  } catch (error) {
-    console.error("Failed to start server:", error.message);
+    if (environment.trim() !== 'test') {
+      app.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT} successfully`);
+      });
+    }
+  } catch (err) {
+    console.error('Failed to start server:', err);
     process.exit(1);
   }
 };
 
+// Invoke start
 startServer();
+
+export default app;

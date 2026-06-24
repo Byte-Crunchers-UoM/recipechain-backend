@@ -177,17 +177,30 @@ export const getRecipeById = async (req, res, next) => {
             
             // 2. Check if this is a buyer (from the Model)
             // This function needs to be in your recipeModels.js
-            const { checkPurchaseStatusModel } = await import('../models/recipesModel.js');
             const hasPurchased = await checkPurchaseStatusModel(userId, recipeId);
 
-            console.log("User ID:", userId);
+            // 3. NEW: Check if this is an Admin reviewing the recipe!
+            const { data: profileData } = await supabase
+                .from("users")
+                .select("role")
+                .eq("user_id", userId)
+                .single();
+            const isAdmin = profileData?.role === "admin";
+
+            // If they are the creator, a buyer, OR an admin, unlock it!
+            if (isSeller || hasPurchased || isAdmin) {
+                hasAccess = true;
+            }
+        }
+
+           /* console.log("User ID:", userId);
             console.log("Is Seller?:", isSeller);
             console.log("Has Purchased?:", hasPurchased);
 
             if (isSeller || hasPurchased) {
                 hasAccess = true;
             }
-        }
+        }*/
 
         if (!hasAccess) {
             console.log("🔴 Access Denied: Sending Locked Version");
@@ -208,6 +221,28 @@ export const getRecipeById = async (req, res, next) => {
         next(error);
     }
 };
+
+
+export const verifyRecipe = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { approval_status, rejection_reason } = req.body;
+
+    const updatedRecipe = await recipeService.verifyRecipe(id, { approval_status: approval_status, rejection_reason: rejection_reason });
+    
+    return sendResponse(
+      res, 
+      200, 
+      true, 
+     `Recipe has been ${approval_status}`, 
+      updatedRecipe
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+// UPDATE 
 
 /**
  * Updates details of an existing recipe.
@@ -237,11 +272,7 @@ export const updateRecipe = async (req, res, next) => {
 export const deleteRecipe = async (req, res, next)=> {
     try {
         await recipeService.deleteRecipe(req.params.id);
-
-        res.status(200).json({
-            success: true,
-            message: 'Recipe deleted successfully'
-        });
+        return sendResponse(res, 200, true, 'Recipe deleted successfully');
     } catch (error) {
         next(error);
     }

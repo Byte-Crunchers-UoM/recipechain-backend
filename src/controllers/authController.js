@@ -17,12 +17,11 @@ export const adminLogin = async (req, res) => {
   try {
     console.log("Login attempt for:", email);
 
-    // Supabase Auth verifies the password, so the backend never handles raw password checking manually.
-    const { data: authData, error: authError } =
-      await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+    // 1. Supabase Auth Login
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({  //check if email and password are in the system
+      email: email,
+      password: password,
+    });
 
     if (authError) {
       return res.status(401).json({ message: "Email or Password wrong" });

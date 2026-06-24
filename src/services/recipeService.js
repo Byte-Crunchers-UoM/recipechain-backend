@@ -5,6 +5,7 @@ import {
   deleteRecipeModel,
   getAllRecipesModel,
   getFilteredRecipesModel,
+  verifyRecipeModel,
   searchRecipesModel,
   getRecipeWithSellerModel,
   savePaymentRecordModel,
@@ -87,6 +88,16 @@ class RecipeService {
     return await deleteRecipeModel(id);
   }
 
+  async verifyRecipe(id, verificationData) {
+    // We pass the logic to the model to handle the Supabase update
+    return await verifyRecipeModel(id, verificationData);
+  }
+
+
+  // FIXED: Changed 'r' to 'R' to match standard naming and Controller calls
+  async getFilteredRecipes(filters){ 
+    return await getFilteredRecipesModel(filters);
+  }
   /**
    * Core payment logic for RecipeChain. Connects to the XRPL (XRP Ledger),
    * verifies the user's transaction, records the payment, and automatically

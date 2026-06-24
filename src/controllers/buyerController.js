@@ -11,8 +11,8 @@ import cookbookService from "../services/cookbookService.js";
  * @returns {Promise<void>}
  */
 export const createBuyer = async (req, res) => {
-  const { email, wallet_address, display_name, bio } = req.body;
-  const testUserId = crypto.randomUUID();
+  const { email, wallet_address, display_name, bio } = req.body; 
+  const testUserId = crypto.randomUUID(); 
 
   try {
     // This creates the base app user first because buyers depend on users.user_id.
@@ -27,25 +27,15 @@ export const createBuyer = async (req, res) => {
 
     if (userError) throw userError;
 
-    // Use email prefix as fallback so test buyers still have a readable display name.
-    const safeDisplayName =
-      display_name ||
-      (typeof email === "string" && email.includes("@")
-        ? email.split("@")[0]
-        : email || "Buyer");
-
-    // Buyer-specific profile/stat fields are stored separately from shared user auth data.
-    const { error: buyerError } = await supabase.from("buyers").insert([
-      {
-        user_id: testUserId,
-        display_name: safeDisplayName,
-        bio: bio || "",
-        profile_picture: null,
-        total_purchases: 0,
-        total_spent_xrp: 0,
-        account_balance: 0,
-      },
-    ]);
+    const { error: buyerError } = await supabase.from('buyers').insert([{ 
+      user_id: testUserId, 
+      display_name: display_name || 'New Buyer', 
+      bio: bio || '',
+      total_purchases: 0,
+      total_spent_xrp: 0,
+      account_balance: 0,
+      status: 'active' // Default status
+    }]);
 
     if (buyerError) throw buyerError;
 
@@ -71,22 +61,17 @@ export const createBuyer = async (req, res) => {
  */
 export const getAllBuyers = async (req, res) => {
   try {
-    // Buyer table holds profile/stat data, while users table holds email and wallet address.
     const { data: buyers, error: buyerError } = await supabase
-      .from("buyers")
-      .select(
-        "user_id, display_name, total_purchases, total_spent_xrp, bio, profile_picture, account_balance"
-      );
-
+        .from('buyers')
+        .select('user_id, display_name, status, total_purchases, total_spent_xrp, bio, profile_picture, account_balance');
+        
     if (buyerError) throw buyerError;
 
     if (!buyers || buyers.length === 0) {
       return res.status(200).json({ success: true, data: [] });
     }
 
-    const buyerIds = buyers.map((b) => b.user_id);
-
-    // Fetch matching users in one query to avoid one database request per buyer.
+    const buyerIds = buyers.map(b => b.user_id);
     const { data: users, error: userError } = await supabase
       .from("users")
       .select("user_id, email, wallet_address")
@@ -94,24 +79,14 @@ export const getAllBuyers = async (req, res) => {
 
     if (userError) throw userError;
 
-    // Combine buyers and users manually because the tables are queried separately.
-    const combinedData = buyers.map((buyer) => {
-      const matchingUser = users.find((u) => u.user_id === buyer.user_id);
-
+    const combinedData = buyers.map(buyer => {
+      const matchingUser = users.find(u => u.user_id === buyer.user_id);
       return {
-        user_id: buyer.user_id,
-        display_name: buyer.display_name,
-        total_purchases: buyer.total_purchases,
-        total_spent_xrp: buyer.total_spent_xrp,
-        account_balance: buyer.account_balance,
-        bio: buyer.bio,
-        profile_picture: buyer.profile_picture,
-        users: matchingUser
-          ? {
-              email: matchingUser.email,
-              wallet_address: matchingUser.wallet_address,
-            }
-          : null,
+        ...buyer,
+        users: matchingUser ? {
+          email: matchingUser.email,
+          wallet_address: matchingUser.wallet_address
+        } : null
       };
     });
 
@@ -133,17 +108,21 @@ export const getAllBuyers = async (req, res) => {
  */
 export const getBuyerById = async (req, res) => {
   const { id } = req.params;
-
+  
   try {
+    // ADDED 'status' here so the profile page can see if they are blocked
     const { data: buyerData, error: buyerError } = await supabase
-      .from("buyers")
-      .select(
-        "user_id, display_name, total_purchases, total_spent_xrp, bio, profile_picture, account_balance"
-      )
-      .eq("user_id", id)
+      .from('buyers')
+      .select('user_id, display_name, status, total_purchases, total_spent_xrp, bio, profile_picture, account_balance')
+      .eq('user_id', id)
       .single();
 
-    if (buyerError) throw buyerError;
+      
+
+    if (buyerError) {
+      
+      throw buyerError;
+    }
 
     // Email and wallet address are stored in users table, not buyers table.
     const { data: userData, error: userError } = await supabase
@@ -154,9 +133,9 @@ export const getBuyerById = async (req, res) => {
 
     if (userError) throw userError;
 
-    return res.status(200).json({
-      success: true,
-      data: { ...buyerData, users: userData },
+    return res.status(200).json({ 
+      success: true, 
+      data: { ...buyerData, users: userData } 
     });
   } catch (error) {
     return res.status(404).json({
@@ -198,6 +177,33 @@ export const updateBuyer = async (req, res) => {
   }
 };
 
+// --- NEW: UPDATE STATUS (Block/Unblock) ---
+export const updateBuyerStatus = async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body; // Expecting 'blocked' or 'active'
+
+  try {
+    const { data, error } = await supabase
+      .from('buyers')
+      .update({ status: status })
+      .eq('user_id', id)
+      .select();
+
+    if (error) throw error;
+    if (!data || data.length === 0) throw new Error("Buyer not found");
+
+    return res.status(200).json({ 
+      success: true, 
+      message: `Buyer status changed to ${status}`,
+      data: data[0]
+    });
+  } catch (error) {
+    console.error("DEBUG ERROR:", error);
+    return res.status(500).json({ success: false, errorDetails: error.message });
+  }
+};
+
+// 5. DELETE: Remove a buyer account permanently
 /**
  * Deletes a buyer and the related user record.
  *
