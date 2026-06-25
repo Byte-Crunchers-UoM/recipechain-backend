@@ -2,12 +2,13 @@
 
 import { supabase } from "../config/supabase.js";
 
+
 /**
- * Database Model: Fetches all published recipes from Supabase,
- * including the seller's full name.
+ * Database Model: Fetches all published recipes with pagination.
  */
-export const getAllRecipesModel = async () => {
-  const { data, error } = await supabase
+
+export const getAllRecipesModel = async (from, to) => {
+  const { data, count, error } = await supabase
     .from('recipes')
     .select(`
       *,
@@ -16,24 +17,25 @@ export const getAllRecipesModel = async () => {
         *,
         feedback_images(*)
       )
-    `)
+    `, { count: 'exact' }) // Required for totalItems calculation
     .eq('status', 'active')
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .range(from, to); 
     
   if (error) throw error; 
 
-  return data.map(recipe => ({
+  const formattedData = data.map(recipe => ({
     ...recipe,
     full_name: recipe.sellers?.full_name || "RecipeChain User",
     price_xrp: recipe.price,
-    // Safely handle feedbacks and their nested images
     feedbacks: recipe.feedbacks?.map(feedback => ({
       ...feedback,
       feedback_images: feedback.feedback_images || []
     })) || []
   }));
-};
 
+  return { data: formattedData, totalCount: count };
+};
 /**
  * Database Model: Fetches recipes based on dynamic category filters
  * and joins the required tag constraints.

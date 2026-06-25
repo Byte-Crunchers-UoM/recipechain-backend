@@ -39,9 +39,16 @@ class RecipeService {
   /**
    * Retrieves all recipes and determines if the current user has bought them.
    */
-  async getAllRecipes(userId = null) {
-      const recipes = await getAllRecipesModel();
-      return await this._attachPurchaseFlags(recipes, userId);
+  async getAllRecipes(userId = null, from, to) {
+      // Pass the pre-calculated bounds to the model
+      const { data, totalCount } = await getAllRecipesModel(from, to);
+      
+      const recipesWithFlags = await this._attachPurchaseFlags(data, userId);
+      
+      return {
+          recipes: recipesWithFlags,
+          totalCount: totalCount
+      };
   }
 
   /**

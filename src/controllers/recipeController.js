@@ -1,5 +1,6 @@
 //src/recipeController.js
 import { supabase } from '../config/supabase.js'; 
+import { getPaginationOptions, getPaginationMeta } from '../utils/paginations.js';
 
 import recipeService from "../services/recipeService.js";
 import { checkPurchaseStatusModel } from '../models/recipesModel.js';
@@ -74,20 +75,34 @@ export const searchRecipes = async (req, res, next) => {
  * Fetches all available published recipes on the platform.
  * Typically used for the homepage or main marketplace feed.
  */
-export const getAllRecipes = async(req, res, next) => {
+/**
+ * Fetches all available published recipes on the platform with pagination.
+ */
+
+export const getAllRecipes = async (req, res, next) => {
     try {
-        // Get the User ID from optionalSession (undefined if not logged in)
         const userId = req.user?.user_id || req.user?.id; 
+        
+        // 1. Get safe, sanitized pagination options (Max 50 items per page)
+        const { page, limit, from, to } = getPaginationOptions(req.query.page, req.query.limit, 10, 50);
 
-        // Pass that ID to the Service
-        const recipes = await recipeService.getAllRecipes(userId);
+        // 2. Pass the strict range down to the service
+        const { recipes, totalCount } = await recipeService.getAllRecipes(userId, from, to);
 
-        return sendResponse(res, 200, true, 'recipes retrieved successfully', recipes);
+        // 3. Generate standard metadata
+        const paginationMeta = getPaginationMeta(totalCount, page, limit);
+
+        // 4. Standardized JSON response
+        return res.status(200).json({
+            success: true,
+            message: 'Recipes retrieved successfully',
+            data: recipes,
+            meta: paginationMeta // Industry standard is grouping pagination under 'meta'
+        });
     } catch(err) {
         next(err);
     }
 }
-
 /**
  * Handles the creation of a new recipe by a seller.
  * Captures all culinary details and stores them in the database
