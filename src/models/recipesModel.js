@@ -12,7 +12,10 @@ export const getAllRecipesModel = async () => {
     .select(`
       *,
       sellers!inner(full_name),
-      feedbacks(*)
+      feedbacks(
+        *,
+        feedback_images(*)
+      )
     `)
     .eq('status', 'active')
     .order('created_at', { ascending: false });
@@ -23,7 +26,11 @@ export const getAllRecipesModel = async () => {
     ...recipe,
     full_name: recipe.sellers?.full_name || "RecipeChain User",
     price_xrp: recipe.price,
-    feedbacks: recipe.feedbacks || [] // Ensures it returns an empty array if there are no feedbacks
+    // Safely handle feedbacks and their nested images
+    feedbacks: recipe.feedbacks?.map(feedback => ({
+      ...feedback,
+      feedback_images: feedback.feedback_images || []
+    })) || []
   }));
 };
 
