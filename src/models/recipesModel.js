@@ -6,20 +6,25 @@ import { supabase } from "../config/supabase.js";
  * Database Model: Fetches all published recipes from Supabase,
  * including the seller's full name.
  */
-export const getAllRecipesModel = async()=>{
-    const{ data,error } = await supabase
-    .from ('recipes')
-    .select(`*,
-      sellers!inner(full_name)`)
-    //.eq('status', 'active')
-    .order('created_at',{ascending:false});
+export const getAllRecipesModel = async () => {
+  const { data, error } = await supabase
+    .from('recipes')
+    .select(`
+      *,
+      sellers!inner(full_name),
+      feedbacks(*)
+    `)
+    .eq('status', 'active')
+    .order('created_at', { ascending: false });
     
-    if (error) throw error 
-   return data.map(recipe => ({
-      ...recipe,
-      full_name: recipe.sellers?.full_name || "RecipeChain User",
-      price_xrp: recipe.price
-    }));
+  if (error) throw error; 
+
+  return data.map(recipe => ({
+    ...recipe,
+    full_name: recipe.sellers?.full_name || "RecipeChain User",
+    price_xrp: recipe.price,
+    feedbacks: recipe.feedbacks || [] // Ensures it returns an empty array if there are no feedbacks
+  }));
 };
 
 /**
