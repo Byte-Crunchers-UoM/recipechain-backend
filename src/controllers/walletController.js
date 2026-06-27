@@ -1,3 +1,5 @@
+// src/controllers/walletController.js
+
 import walletService from "../services/walletService.js";
 import stripe from "../config/stripe.js";
 
@@ -81,7 +83,10 @@ export const getMyWalletOverview = async (req, res) => {
     const userId = getUserId(req);
 
     if (!userId) {
-      return res.status(401).json({ ok: false, message: "Unauthorized" });
+      return res.status(401).json({
+        ok: false,
+        message: "Unauthorized",
+      });
     }
 
     const wallet = await walletService.getWalletOverview(userId);
@@ -105,7 +110,10 @@ export const getMyWalletTransactions = async (req, res) => {
     const userId = getUserId(req);
 
     if (!userId) {
-      return res.status(401).json({ ok: false, message: "Unauthorized" });
+      return res.status(401).json({
+        ok: false,
+        message: "Unauthorized",
+      });
     }
 
     const transactions = await walletService.getWalletTransactions(userId);
@@ -124,44 +132,91 @@ export const getMyWalletTransactions = async (req, res) => {
   }
 };
 
+export const getXrpUsdRate = async (req, res) => {
+  try {
+    const userId = getUserId(req);
+
+    if (!userId) {
+      return res.status(401).json({
+        ok: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const quote = await walletService.getXrpUsdRate();
+
+    return res.status(200).json({
+      ok: true,
+      quote,
+    });
+  } catch (error) {
+    console.error("getXrpUsdRate error:", error);
+
+    return res.status(getErrorStatusCode(error)).json({
+      ok: false,
+      message: error.message || "Failed to load XRP/USD rate",
+    });
+  }
+};
+
 export const createStripeTopupCheckoutSession = async (req, res) => {
   try {
     const userId = getUserId(req);
 
     if (!userId) {
-      return res.status(401).json({ ok: false, message: "Unauthorized" });
-    }
-
-    const amount = Number(req.body?.amount);
-
-    if (!Number.isFinite(amount) || amount <= 0) {
-      return res.status(400).json({
+      return res.status(401).json({
         ok: false,
-        message: "Invalid amount",
+        message: "Unauthorized",
       });
     }
 
+    /**
+     * New flow:
+     * Frontend sends XRP amount.
+     * Backend converts XRP amount to USD using live XRP/USD rate.
+     */
+    const xrpAmount = Number(
+      req.body?.xrpAmount ?? req.body?.amountXrp ?? req.body?.amount
+    );
+
+    if (!Number.isFinite(xrpAmount) || xrpAmount <= 0) {
+      return res.status(400).json({
+        ok: false,
+        message: "Invalid XRP amount",
+      });
+    }
+
+    const quote = await walletService.convertXrpToUsd(xrpAmount);
     const frontendBaseUrl = getFrontendBaseUrl();
 
     logDevelopment("Creating Stripe checkout session:", {
       userId,
-      amount,
+      amountXrp: quote.amountXrp,
+      usdAmount: quote.usdAmount,
+      xrpUsdRate: quote.xrpUsdRate,
       frontendBaseUrl,
     });
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
-      payment_method_types: ["card"],
+
       success_url: `${frontendBaseUrl}/buyer/profile?topup=success&amount=${encodeURIComponent(
-        String(amount)
-      )}`,
+        String(quote.amountXrp)
+      )}&usd=${encodeURIComponent(String(quote.usdAmount))}`,
+
       cancel_url: `${frontendBaseUrl}/buyer/profile?topup=cancelled`,
+
       client_reference_id: userId,
+
       metadata: {
         userId,
-        amountXrp: String(amount),
+        amountXrp: String(quote.amountXrp),
+        usdAmount: String(quote.usdAmount),
+        xrpUsdRate: String(quote.xrpUsdRate),
         topupMethod: "demo_card",
+        rateSource: quote.source,
       },
+
       line_items: [
         {
           quantity: 1,
@@ -169,11 +224,11 @@ export const createStripeTopupCheckoutSession = async (req, res) => {
             currency: "usd",
             product_data: {
               name: "RecipeChain Wallet Top-Up",
-              description: `${amount.toFixed(
-                2
-              )} XRP equivalent top-up (test mode)`,
+              description: `${quote.amountXrp.toFixed(
+                6
+              )} XRP at 1 XRP = USD ${quote.xrpUsdRate.toFixed(6)}`,
             },
-            unit_amount: Math.round(amount * 100),
+            unit_amount: Math.round(quote.usdAmount * 100),
           },
         },
       ],
@@ -182,12 +237,14 @@ export const createStripeTopupCheckoutSession = async (req, res) => {
     logDevelopment("Stripe checkout session created:", {
       sessionId: session.id,
       url: session.url,
+      quote,
     });
 
     return res.status(200).json({
       ok: true,
       sessionId: session.id,
       url: session.url,
+      quote,
     });
   } catch (error) {
     console.error("createStripeTopupCheckoutSession error:", error);
@@ -225,20 +282,40 @@ export const stripeWebhookHandler = async (req, res) => {
   try {
     if (event.type !== "checkout.session.completed") {
       logDevelopment("Unhandled Stripe event type:", event.type);
-      return res.json({ received: true, skipped: true });
+
+      return res.json({
+        received: true,
+        skipped: true,
+      });
     }
 
     const session = event.data.object;
 
     const userId = session.client_reference_id || session.metadata?.userId;
     const amountXrp = Number(session.metadata?.amountXrp || 0);
+    const usdAmount = Number(session.metadata?.usdAmount || 0);
+    const xrpUsdRate = Number(session.metadata?.xrpUsdRate || 0);
 
     logDevelopment("checkout.session.completed received:", {
       sessionId: session.id,
       paymentStatus: session.payment_status,
       userId,
       amountXrp,
+      usdAmount,
+      xrpUsdRate,
     });
+
+    if (session.payment_status && session.payment_status !== "paid") {
+      console.warn("Checkout session completed but payment was not paid:", {
+        sessionId: session.id,
+        paymentStatus: session.payment_status,
+      });
+
+      return res.json({
+        received: true,
+        skipped: true,
+      });
+    }
 
     if (!userId || !Number.isFinite(amountXrp) || amountXrp <= 0) {
       console.warn("Invalid checkout.session.completed payload:", {
@@ -247,15 +324,26 @@ export const stripeWebhookHandler = async (req, res) => {
         amountXrp,
       });
 
-      return res.json({ received: true, skipped: true });
+      return res.json({
+        received: true,
+        skipped: true,
+      });
     }
 
+    /**
+     * Important:
+     * User entered XRP amount.
+     * Stripe charged calculated USD amount.
+     * Webhook credits the exact XRP amount from metadata.
+     */
     const result = await walletService.applySuccessfulTopup({
       userId,
-      amount: amountXrp,
+      amountXrp,
+      usdAmount,
+      xrpUsdRate,
       method: "demo_card",
       externalReference: session.id,
-      note: "Stripe Checkout top-up completed",
+      note: "Stripe Checkout top-up completed with live XRP/USD conversion",
     });
 
     logDevelopment("Top-up processing result:", result);
@@ -294,6 +382,7 @@ export const buyRecipe = async (req, res) => {
     }
 
     const result = await walletService.buyRecipeWithBalance(userId, recipeId);
+
     const response = buildPurchaseResponse({
       result,
       fallbackRecipeId: recipeId,

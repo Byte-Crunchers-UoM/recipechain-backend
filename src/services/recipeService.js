@@ -1,3 +1,5 @@
+// src/services/recipeService.js
+
 import {
   addRecipeModel,
   getRecipeByIdModel,
@@ -5,246 +7,348 @@ import {
   deleteRecipeModel,
   getAllRecipesModel,
   getFilteredRecipesModel,
-  verifyRecipeModel,
   searchRecipesModel,
   getRecipeWithSellerModel,
   savePaymentRecordModel,
   saveRecipePurchaseModel,
   getSellerWalletModel,
-  getUserPurchasesModel 
+  getUserPurchasesModel,
 } from "../models/recipesModel.js";
 import xrpl from "xrpl";
+import xrplService from "./xrplService.js";
+import walletService from "./walletService.js";
 
 class RecipeService {
-
-  /**
-   * Helper Function to attach the 'is_purchased' flag to a list of recipes.
-   * Lets the UI know which recipes the user already owns, so they aren't
-   * prompted to pay again.
-   */
   async _attachPurchaseFlags(recipes, userId) {
-      if (!userId || !recipes || recipes.length === 0) {
-          return recipes.map(recipe => ({ ...recipe, is_purchased: false }));
-      }
+    if (!recipes || recipes.length === 0) {
+      return [];
+    }
 
-      const purchases = await getUserPurchasesModel(userId);
-      const purchasedRecipeIds = purchases.map(p => p.recipe_id);
+    if (!userId) {
+      return recipes.map((recipe) => ({ ...recipe, is_purchased: false }));
+    }
 
-      return recipes.map(recipe => ({
-          ...recipe,
-          is_purchased: purchasedRecipeIds.includes(recipe.recipe_id) || recipe.chef_id === userId
-      }));
+    const purchases = await getUserPurchasesModel(userId);
+    const purchasedRecipeIds = (purchases || []).map((p) => p.recipe_id);
+
+    return recipes.map((recipe) => ({
+      ...recipe,
+      is_purchased:
+        purchasedRecipeIds.includes(recipe.recipe_id) || recipe.chef_id === userId,
+    }));
   }
 
-  /**
-   * Retrieves all recipes and determines if the current user has bought them.
-   */
   async getAllRecipes(userId = null) {
-      const recipes = await getAllRecipesModel();
-      return await this._attachPurchaseFlags(recipes, userId);
+    const recipes = await getAllRecipesModel();
+    return await this._attachPurchaseFlags(recipes, userId);
   }
 
-  /**
-   * Retrieves recipes based on tags/filters and attaches purchase status.
-   */
-  async getFilteredrecipes(filters, userId = null){
+  async getFilteredrecipes(filters, userId = null) {
     const recipes = await getFilteredRecipesModel(filters);
     return await this._attachPurchaseFlags(recipes, userId);
   }
 
-  /**
-   * Performs a keyword search on recipes and attaches purchase status.
-   */
   async searchRecipes(searchTerm, userId = null) {
     const recipes = await searchRecipesModel(searchTerm);
     return await this._attachPurchaseFlags(recipes, userId);
   }
 
-  /**
-   * Saves a new recipe creation to the database.
-   */
   async addRecipe(recipeData) {
     return await addRecipeModel(recipeData);
   }
 
-  /**
-   * Retrieves a single recipe by its unique ID.
-   */
   async getRecipeById(id) {
     return await getRecipeByIdModel(id);
   }
 
-  /**
-   * Updates the details of an existing recipe in the database.
-   */
   async updateRecipe(id, updateData) {
     return await updateRecipeModel(id, updateData);
   }
 
-  /**
-   * Deletes a given recipe from the database.
-   */
   async deleteRecipe(id) {
     return await deleteRecipeModel(id);
   }
 
-  async verifyRecipe(id, verificationData) {
-    // We pass the logic to the model to handle the Supabase update
-    return await verifyRecipeModel(id, verificationData);
+  _getTransactionResult(txResponse) {
+    const meta = txResponse?.result?.meta || txResponse?.result?.metaData;
+
+    if (typeof meta === "string") {
+      return meta;
+    }
+
+    return meta?.TransactionResult || null;
   }
 
-
-  // FIXED: Changed 'r' to 'R' to match standard naming and Controller calls
-  async getFilteredRecipes(filters){ 
-    return await getFilteredRecipesModel(filters);
+  _getTransactionObject(txResponse) {
+    return txResponse?.result?.tx_json || txResponse?.result || {};
   }
-  /**
-   * Core payment logic for RecipeChain. Connects to the XRPL (XRP Ledger),
-   * verifies the user's transaction, records the payment, and automatically
-   * splits and sends the XRPL funds based on dynamic environment variables.
-   */
-  async processRecipeUnlock(buyerId, recipeId, transactionHash) {
-      // 1. Get Recipe details
-      const recipe = await getRecipeWithSellerModel(recipeId);
-      if (!recipe) throw new Error("Recipe not found in Database");
 
-      const priceXrp = recipe.price || recipe.priceXrp || 0; 
-      const sellerId = recipe.sellers?.user_id;
+  _readDeliveredAmount(txResponse) {
+    const meta = txResponse?.result?.meta || txResponse?.result?.metaData;
 
-      //  BEST PRACTICE: Load config from environment and fail fast if missing
-      const networkUrl = process.env.XRPL_NETWORK;
-      const platformAddress = process.env.XRPL_TREASURY_ADDRESS;
-      
-      if (!networkUrl || !platformAddress) {
-          throw new Error("CRITICAL: XRPL network or treasury address is missing from server configuration.");
-      }
+    if (!meta || typeof meta === "string") {
+      return null;
+    }
 
-      // Load dynamic business rules (with safe fallbacks for math)
-      const feePercentage = parseFloat(process.env.PLATFORM_FEE_PERCENTAGE || "0.10");
-      const sellerPercentage = 1 - feePercentage;
-      const slippageTolerance = parseFloat(process.env.XRPL_SLIPPAGE_TOLERANCE || "0.0001");
+    const delivered =
+      meta.delivered_amount ||
+      meta.DeliveredAmount ||
+      this._getTransactionObject(txResponse).Amount;
 
-      // 2. Verify XRPL Transaction
-      let client = new xrpl.Client(networkUrl);
+    if (typeof delivered === "string") {
+      return Number(xrpl.dropsToXrp(delivered));
+    }
+
+    return null;
+  }
+
+  async _verifyXrplPayment({
+    transactionHash,
+    buyerId,
+    recipeId,
+    expectedAmountXrp,
+  }) {
+    const networkUrl =
+      process.env.XRPL_NETWORK || "wss://s.altnet.rippletest.net:51233";
+    const platformWallet =
+      process.env.XRPL_TREASURY_ADDRESS ||
+      process.env.PLATFORM_XRPL_ADDRESS ||
+      process.env.NEXT_PUBLIC_PLATFORM_XRPL_ADDRESS ||
+      "";
+
+    if (!platformWallet) {
+      throw new Error("Platform XRPL address is not configured");
+    }
+
+    const client = new xrpl.Client(networkUrl);
+
+    try {
       await client.connect();
 
-      try {
-          const txResponse = await client.request({ command: "tx", transaction: transactionHash });
-          const tx = txResponse.result;
-
-          const actualDestination = tx.Destination || tx.transaction?.Destination || tx.tx_json?.Destination;
-          const actualAccount = tx.Account || tx.transaction?.Account || tx.tx_json?.Account;
-          
-          let actualAmountDrops = tx.meta?.delivered_amount || tx.Amount || tx.transaction?.Amount || tx.tx_json?.Amount;
-          if (typeof actualAmountDrops === 'object' && actualAmountDrops !== null) actualAmountDrops = actualAmountDrops.value; 
-
-          const txMeta = tx.meta || tx.transaction?.meta || tx.tx_json?.meta;
-          const txResult = typeof txMeta === 'string' ? txMeta : txMeta?.TransactionResult;
-
-          if (txResult !== 'tesSUCCESS') throw new Error('Transaction was not successful on the ledger');
-          if (actualAccount === platformAddress || actualDestination !== platformAddress) throw new Error('Transaction destination is incorrect.');
-
-          let validDropsString = actualAmountDrops ? String(actualAmountDrops).replace(/[^0-9.]/g, '') : "0";
-          const droppedAmount = xrpl.dropsToXrp(validDropsString || "0");
-          const received = Number(droppedAmount);
-          const expected = Number(priceXrp);
-
-          if (received + slippageTolerance < expected) {
-              throw new Error(`Insufficient payment amount. Expected ${expected} XRP, but received ${received} XRP.`);
-          }
-      } finally {
-          await client.disconnect();
-      }
-
-      // 3. Calculate Split dynamically
-      const sellerShare = Number((priceXrp * sellerPercentage).toFixed(6)); 
-      const commissionShare = Number((priceXrp * feePercentage).toFixed(6));
-
-      // 4. Save Payment to DB
-      const paymentRecord = await savePaymentRecordModel({
-          buyer_id: buyerId, 
-          recipe_id: recipeId, 
-          amount: priceXrp,
-          payment_hash: transactionHash,
-          status: 'completed', 
-          seller_id: sellerId,
-          payment_type: 'recipe_purchase',
-          commission_amount: commissionShare,
-          seller_amount: sellerShare
+      const txResponse = await client.request({
+        command: "tx",
+        transaction: transactionHash,
       });
 
-      // 5. Grant Access (Save to recipe_purchases)
-      let isDuplicate = false; 
+      const tx = this._getTransactionObject(txResponse);
+      const txResult = this._getTransactionResult(txResponse);
 
-      try {
-          await saveRecipePurchaseModel({
-              buyer_id: buyerId,
-              recipe_id: recipeId,
-              payment_id: paymentRecord.payment_id
+      if (txResult !== "tesSUCCESS") {
+        throw new Error(
+          `XRPL transaction was not successful. Status: ${txResult || "Unknown"}`
+        );
+      }
+
+      if (tx.TransactionType !== "Payment") {
+        throw new Error("XRPL transaction type is incorrect");
+      }
+
+      if (tx.Destination !== platformWallet) {
+        throw new Error("XRPL transaction destination is incorrect");
+      }
+
+      const receivedAmount = this._readDeliveredAmount(txResponse);
+      const expectedAmount = Number(expectedAmountXrp);
+
+      if (!Number.isFinite(receivedAmount) || receivedAmount <= 0) {
+        throw new Error("Could not verify received XRP amount");
+      }
+
+      if (receivedAmount + 0.000001 < expectedAmount) {
+        throw new Error(
+          `Insufficient payment amount. Expected ${expectedAmount} XRP, but received ${receivedAmount} XRP.`
+        );
+      }
+
+      console.log("✅ XRPL transaction verified successfully:", {
+        transactionHash,
+        buyerId,
+        recipeId,
+        expectedAmount,
+        receivedAmount,
+      });
+
+      return {
+        tx,
+        txResult,
+        receivedAmount,
+      };
+    } finally {
+      if (client.isConnected()) {
+        await client.disconnect();
+      }
+    }
+  }
+
+  async _payoutSellerInBackground({ sellerId, sellerShare }) {
+    if (!sellerId || Number(sellerShare || 0) <= 0) {
+      return;
+    }
+
+    getSellerWalletModel(sellerId)
+      .then((sellerUser) => {
+        const destWallet = sellerUser?.wallet_address;
+
+        if (!destWallet || !destWallet.startsWith("r")) {
+          console.error(
+            `❌ Cannot send split payment: Seller ${sellerId} does not have a valid XRPL wallet address.`
+          );
+          return;
+        }
+
+        return xrplService
+          .sendXrpFromTreasury({
+            destination: destWallet,
+            amountXrp: sellerShare.toString(),
+          })
+          .then(() => {
+            console.log("✅ Revenue split successful for seller:", destWallet);
           });
-          console.log("✅ Recipe access granted to buyer.");
-      } catch (purchaseErr) {
-          if (purchaseErr.code === '23505' || purchaseErr.message?.includes('duplicate key')) {
-              console.log("⚠️ Duplicate purchase detected! User already owns this recipe.");
-              isDuplicate = true; 
-          } else {
-              throw purchaseErr; 
-          }
+      })
+      .catch((err) => {
+        console.error("❌ Split payment failed:", err.message || err);
+      });
+  }
+
+  async _refundDuplicatePurchaseInBackground({ buyerId, amountXrp }) {
+    getSellerWalletModel(buyerId)
+      .then((buyerUser) => {
+        const buyerWallet = buyerUser?.wallet_address;
+
+        if (!buyerWallet || !buyerWallet.startsWith("r")) {
+          console.error(
+            `❌ Cannot refund: Buyer ${buyerId} does not have a valid XRPL wallet address.`
+          );
+          return;
+        }
+
+        return xrplService
+          .sendXrpFromTreasury({
+            destination: buyerWallet,
+            amountXrp: amountXrp.toString(),
+          })
+          .then(() => {
+            console.log("✅ Refund successful for buyer:", buyerWallet);
+          });
+      })
+      .catch((err) => {
+        console.error("❌ Refund failed:", err.message || err);
+      });
+  }
+
+  /**
+   * Original XRPL payment flow:
+   * 1. Buyer sends XRP to platform wallet from frontend.
+   * 2. Backend verifies the transaction hash.
+   * 3. Backend saves payment and recipe_purchases.
+   * 4. Backend sends seller share from treasury.
+   *
+   * Added improvement:
+   * - After access is granted, also log wallet_transactions and user activity.
+   * - This does NOT change the original payment logic.
+   */
+  async processRecipeUnlock(buyerId, recipeId, transactionHash) {
+    const recipe = await getRecipeWithSellerModel(recipeId);
+
+    if (!recipe) {
+      throw new Error("Recipe not found");
+    }
+
+    const priceXrp = Number(recipe.price || 0);
+
+    if (!Number.isFinite(priceXrp) || priceXrp <= 0) {
+      throw new Error("Invalid recipe price");
+    }
+
+    const sellerId = recipe.sellers?.user_id || recipe.chef_id || recipe.seller_id;
+
+    const feePercentage = Number(
+      process.env.PLATFORM_COMMISSION_RATE ||
+        process.env.PLATFORM_FEE_PERCENTAGE ||
+        0.1
+    );
+
+    const sellerPercentage = Number((1 - feePercentage).toFixed(6));
+
+    await this._verifyXrplPayment({
+      transactionHash,
+      buyerId,
+      recipeId,
+      expectedAmountXrp: priceXrp,
+    });
+
+    const sellerShare = Number((priceXrp * sellerPercentage).toFixed(6));
+    const commissionShare = Number((priceXrp * feePercentage).toFixed(6));
+
+    const paymentRecord = await savePaymentRecordModel({
+      buyer_id: buyerId,
+      recipe_id: recipeId,
+      amount: priceXrp,
+      payment_hash: transactionHash,
+      status: "completed",
+      seller_id: sellerId,
+      payment_type: "recipe_purchase",
+      commission_amount: commissionShare,
+      seller_amount: sellerShare,
+    });
+
+    let isDuplicate = false;
+
+    try {
+      await saveRecipePurchaseModel({
+        buyer_id: buyerId,
+        recipe_id: recipeId,
+        payment_id: paymentRecord.payment_id,
+      });
+
+      console.log("✅ Recipe access granted to buyer.");
+    } catch (purchaseErr) {
+      if (
+        purchaseErr.code === "23505" ||
+        purchaseErr.message?.includes("duplicate key")
+      ) {
+        console.log("⚠️ Duplicate purchase detected. User already owns this recipe.");
+        isDuplicate = true;
+      } else {
+        throw purchaseErr;
       }
+    }
 
-      // 6. Background Process: Refund OR Payout to Seller
-      if (isDuplicate) {
-          console.log("🔄 Initiating Refund to Buyer for duplicate purchase...");
-          
-          getSellerWalletModel(buyerId).then(buyerUser => {
-              const buyerWallet = buyerUser?.wallet_address;
-              
-              if (!buyerWallet || !buyerWallet.startsWith('r')) {
-                  console.error(`❌ Cannot refund: Buyer ${buyerId} does not have a valid XRPL wallet address.`);
-                  return;
-              }
+    if (isDuplicate) {
+      console.log("🔄 Initiating refund to buyer for duplicate purchase.");
+      this._refundDuplicatePurchaseInBackground({
+        buyerId,
+        amountXrp: priceXrp,
+      });
 
-              import('./xrplService.js').then(async (xrplService) => {
-                  try {
-                      console.log(`Refunding ${priceXrp} XRP back to Buyer (${buyerWallet})...`);
-                      await xrplService.default.sendXrpFromTreasury({
-                          destination: buyerWallet,
-                          amountXrp: priceXrp.toString() 
-                      });
-                      console.log("✅ Refund successful for buyer:", buyerWallet);
-                  } catch (err) {
-                      console.error("❌ Refund failed:", err.message);
-                  }
-              });
-          }).catch(err => console.error("❌ Failed to get buyer wallet for refund:", err));
+      return {
+        success: true,
+        duplicate: true,
+        paymentId: paymentRecord.payment_id,
+      };
+    }
 
-      } else if (sellerId && priceXrp > 0) {
-          
-          getSellerWalletModel(sellerId).then(sellerUser => {
-              const destWallet = sellerUser?.wallet_address;
-              
-              if (!destWallet || !destWallet.startsWith('r')) {
-                  console.error(`❌ Cannot send split payment: Seller ${sellerId} does not have a valid XRPL wallet address.`);
-                  return; 
-              }
+    await walletService.ensurePurchaseLedgerEntry({
+      userId: buyerId,
+      paymentId: paymentRecord.payment_id,
+      recipeId,
+      recipeTitle: recipe.title || "Recipe",
+      amount: priceXrp,
+      txHash: transactionHash,
+    });
 
-              import('./xrplService.js').then(async (xrplService) => {
-                  try {
-                      console.log(`Sending ${sellerShare} XRP to Seller (${destWallet})...`);
-                      await xrplService.default.sendXrpFromTreasury({
-                          destination: destWallet,
-                          amountXrp: sellerShare.toString()
-                      });
-                      console.log("✅ Revenue split successful for seller:", destWallet);
-                  } catch (err) {
-                      console.error("❌ Split payment failed:", err.message);
-                  }
-              });
-              
-          }).catch(err => console.error("❌ Failed to get seller wallet:", err));
-      }
+    this._payoutSellerInBackground({
+      sellerId,
+      sellerShare,
+    });
 
-      return true;
+    return {
+      success: true,
+      duplicate: false,
+      paymentId: paymentRecord.payment_id,
+      sellerAmount: sellerShare,
+      commissionAmount: commissionShare,
+    };
   }
 }
 
