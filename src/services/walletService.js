@@ -1,5 +1,8 @@
+// src/services/walletService.js
+
 import { supabase, supabaseAdmin } from "../config/supabase.js";
 import xrplService from "./xrplService.js";
+import xrpRateService from "./xrpRateService.js";
 import activityService from "./activityService.js";
 
 const db = supabaseAdmin || supabase;
@@ -20,6 +23,25 @@ const toAmount = (value) => {
   }
 
   return Number(n.toFixed(6));
+};
+
+const safeNumber = (value, fallback = 0) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const getDateValue = (tx) => {
+  return tx?.created_at || tx?.time_stamp || tx?.date || tx?.updated_at || "";
+};
+
+const sortTransactionsDesc = (a, b) => {
+  const aTime = new Date(getDateValue(a)).getTime();
+  const bTime = new Date(getDateValue(b)).getTime();
+
+  const safeATime = Number.isFinite(aTime) ? aTime : 0;
+  const safeBTime = Number.isFinite(bTime) ? bTime : 0;
+
+  return safeBTime - safeATime;
 };
 
 const requireBuyer = async (userId) => {
@@ -63,6 +85,8 @@ const createWalletTransaction = async ({
   referenceTable = null,
   referenceId = null,
 }) => {
+  const normalizedAmount = toAmount(amount);
+
   const { data, error } = await db
     .from("wallet_transactions")
     .insert([
@@ -70,7 +94,7 @@ const createWalletTransaction = async ({
         user_id: userId,
         type,
         direction,
-        amount,
+        amount: normalizedAmount,
         currency: "XRP",
         status,
         description,
@@ -90,37 +114,209 @@ const createWalletTransaction = async ({
   return data;
 };
 
+const getRecipeTitlesMap = async (recipeIds = []) => {
+  const ids = [...new Set(recipeIds.filter(Boolean))];
+
+  if (ids.length === 0) {
+    return new Map();
+  }
+
+  const { data, error } = await db
+    .from("recipes")
+    .select("recipe_id, title")
+    .in("recipe_id", ids);
+
+  if (error) {
+    console.error("getRecipeTitlesMap failed:", error);
+    return new Map();
+  }
+
+  return new Map((data || []).map((recipe) => [recipe.recipe_id, recipe.title]));
+};
+
+/**
+ * Fallback purchase transactions from payments.
+ * IMPORTANT:
+ * Do not select payments.created_at because your payments table does not have it.
+ */
+const getPurchaseFallbackTransactions = async (userId) => {
+  const { data: payments, error } = await db
+    .from("payments")
+    .select(
+      "payment_id, buyer_id, recipe_id, amount, status, payment_type, payment_hash, time_stamp, updated_at"
+    )
+    .eq("buyer_id", userId)
+    .eq("payment_type", "recipe_purchase")
+    .eq("status", "completed")
+    .order("time_stamp", { ascending: false });
+
+  if (error) {
+    console.error("getPurchaseFallbackTransactions failed:", error);
+    return [];
+  }
+
+  const safePayments = payments || [];
+
+  if (safePayments.length === 0) {
+    return [];
+  }
+
+  const recipeTitleMap = await getRecipeTitlesMap(
+    safePayments.map((payment) => payment.recipe_id)
+  );
+
+  return safePayments.map((payment) => {
+    const title = recipeTitleMap.get(payment.recipe_id) || "Recipe";
+
+    return {
+      transaction_id: `payment-${payment.payment_id}`,
+      user_id: userId,
+      type: "purchase",
+      direction: "debit",
+      amount: safeNumber(payment.amount),
+      currency: "XRP",
+      status: "completed",
+      description: `Purchased recipe: ${title}`,
+      tx_hash: payment.payment_hash || null,
+      reference_table: "payments",
+      reference_id: payment.payment_id,
+      created_at: payment.time_stamp || payment.updated_at || "",
+      updated_at: payment.updated_at || payment.time_stamp || "",
+      source: "payments_fallback",
+    };
+  });
+};
+
+const mergeWalletTransactionsWithPurchaseFallbacks = async ({
+  userId,
+  walletTransactions = [],
+  limit = null,
+}) => {
+  const fallbackPurchases = await getPurchaseFallbackTransactions(userId);
+
+  const existingKeys = new Set();
+
+  for (const tx of walletTransactions || []) {
+    const referenceKey =
+      tx.reference_table && tx.reference_id
+        ? `${tx.reference_table}:${tx.reference_id}`
+        : "";
+
+    const hashKey = tx.tx_hash ? `hash:${tx.tx_hash}` : "";
+
+    if (referenceKey) existingKeys.add(referenceKey);
+    if (hashKey) existingKeys.add(hashKey);
+  }
+
+  const missingPurchaseFallbacks = fallbackPurchases.filter((paymentTx) => {
+    const referenceKey =
+      paymentTx.reference_table && paymentTx.reference_id
+        ? `${paymentTx.reference_table}:${paymentTx.reference_id}`
+        : "";
+
+    const hashKey = paymentTx.tx_hash ? `hash:${paymentTx.tx_hash}` : "";
+
+    return !existingKeys.has(referenceKey) && !existingKeys.has(hashKey);
+  });
+
+  const merged = [...(walletTransactions || []), ...missingPurchaseFallbacks]
+    .filter(Boolean)
+    .sort(sortTransactionsDesc);
+
+  if (typeof limit === "number" && limit > 0) {
+    return merged.slice(0, limit);
+  }
+
+  return merged;
+};
+
 const getWalletOverview = async (userId) => {
   const buyer = await requireBuyer(userId);
   const user = await getUserWallet(userId);
 
-  const { data: recentTransactions, error: txError } = await db
+  const { data: baseTransactions, error: txError } = await db
     .from("wallet_transactions")
     .select("*")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
-    .limit(20);
+    .limit(100);
 
   if (txError) throw txError;
+
+  const recentTransactions = await mergeWalletTransactionsWithPurchaseFallbacks({
+    userId,
+    walletTransactions: baseTransactions || [],
+    limit: 20,
+  });
+
+  let xrplBalance = null;
+
+  if (user.wallet_address) {
+    try {
+      xrplBalance = await xrplService.getXrpBalance(user.wallet_address);
+    } catch (balanceError) {
+      console.error("Failed to load XRPL balance:", balanceError);
+      xrplBalance = {
+        walletAddress: user.wallet_address,
+        balanceXrp: null,
+        balanceDrops: null,
+        network: process.env.XRPL_NETWORK || "wss://s.altnet.rippletest.net:51233",
+        status: "error",
+        error: balanceError.message || "Failed to load XRPL balance",
+      };
+    }
+  } else {
+    xrplBalance = {
+      walletAddress: "",
+      balanceXrp: null,
+      balanceDrops: null,
+      network: process.env.XRPL_NETWORK || "wss://s.altnet.rippletest.net:51233",
+      status: "missing_wallet",
+      error: "Wallet address not connected",
+    };
+  }
 
   return {
     wallet_address: user.wallet_address || "",
     email: user.email || "",
     account_balance: Number(buyer.account_balance || 0),
-    recent_transactions: recentTransactions || [],
+    recipechain_balance: Number(buyer.account_balance || 0),
+    xrpl_testnet_balance:
+      xrplBalance?.balanceXrp === null || xrplBalance?.balanceXrp === undefined
+        ? null
+        : Number(xrplBalance.balanceXrp),
+    xrpl_balance_status: xrplBalance?.status || "unknown",
+    xrpl_balance_error: xrplBalance?.error || "",
+    xrpl_network:
+      xrplBalance?.network ||
+      process.env.XRPL_NETWORK ||
+      "wss://s.altnet.rippletest.net:51233",
+    recent_transactions: recentTransactions,
   };
 };
 
-const getWalletTransactions = async (userId) => {
-  const { data, error } = await db
+const getWalletTransactions = async (userId, options = {}) => {
+  const { limit = null } = options;
+
+  let query = db
     .from("wallet_transactions")
     .select("*")
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
 
+  if (typeof limit === "number" && limit > 0) {
+    query = query.limit(Math.max(limit, 50));
+  }
+
+  const { data, error } = await query;
+
   if (error) throw error;
 
-  return data || [];
+  return await mergeWalletTransactionsWithPurchaseFallbacks({
+    userId,
+    walletTransactions: data || [],
+    limit,
+  });
 };
 
 const createTopupOrder = async ({
@@ -164,27 +360,18 @@ const createTopupOrder = async ({
 const applySuccessfulTopup = async ({
   userId,
   amount,
+  amountXrp,
+  usdAmount,
+  xrpUsdRate,
   method = "demo_card",
   externalReference = null,
+  txHash = null,
   note = "Top-up completed",
 }) => {
-  const normalizedAmount = toAmount(amount);
-
-  console.log("applySuccessfulTopup started:", {
-    userId,
-    amount: normalizedAmount,
-    method,
-    externalReference,
-  });
+  const normalizedAmount = toAmount(amountXrp ?? amount);
 
   const buyer = await requireBuyer(userId);
   const user = await getUserWallet(userId);
-
-  console.log("Current buyer balance:", {
-    userId,
-    currentBalance: Number(buyer.account_balance || 0),
-    walletAddress: user.wallet_address || null,
-  });
 
   if (externalReference) {
     const { data: existingTopup, error: existingTopupError } = await db
@@ -194,134 +381,119 @@ const applySuccessfulTopup = async ({
       .eq("external_reference", externalReference)
       .maybeSingle();
 
-    if (existingTopupError) {
-      console.error("existingTopup lookup failed:", existingTopupError);
-      throw existingTopupError;
-    }
+    if (existingTopupError) throw existingTopupError;
 
     if (existingTopup) {
-      console.log("Top-up already processed, skipping duplicate:", {
-        userId,
-        externalReference,
-        existingTopup,
-      });
+      const latestBuyer = await requireBuyer(userId);
 
       return {
-        topupOrder: existingTopup,
-        newBalance: Number(buyer.account_balance || 0),
-        xrplTxHash: existingTopup.tx_hash || null,
-        duplicate: true,
+        alreadyProcessed: true,
+        topup: existingTopup,
+        newBalance: Number(latestBuyer.account_balance || 0),
+        txHash: existingTopup.tx_hash || null,
       };
     }
   }
 
-  const topupOrder = await createTopupOrder({
+  const currentBalance = Number(buyer.account_balance || 0);
+  const newBalance = Number((currentBalance + normalizedAmount).toFixed(6));
+
+  const { data: updatedBuyer, error: buyerUpdateError } = await db
+    .from("buyers")
+    .update({ account_balance: newBalance })
+    .eq("user_id", userId)
+    .select("account_balance")
+    .single();
+
+  if (buyerUpdateError) {
+    console.error("Buyer balance update failed:", buyerUpdateError);
+    throw buyerUpdateError;
+  }
+
+  let xrplFundingHash = txHash || null;
+  let xrplFundingError = null;
+
+  if (AUTO_FUND_XRPL_ON_TOPUP && user.wallet_address) {
+    try {
+      const fundingResult = await xrplService.sendXrpFromTreasury({
+        destination: user.wallet_address,
+        amountXrp: normalizedAmount,
+      });
+
+      xrplFundingHash = fundingResult?.hash || fundingResult?.txHash || null;
+    } catch (fundingError) {
+      xrplFundingError = fundingError.message || "XRPL funding failed";
+      console.error("XRPL top-up funding failed:", fundingError);
+    }
+  }
+
+  const topup = await createTopupOrder({
     userId,
     amount: normalizedAmount,
     method,
     externalReference,
-    note,
+    txHash: xrplFundingHash,
+    note:
+      note ||
+      (usdAmount
+        ? `Stripe top-up: USD ${Number(usdAmount).toFixed(2)} → ${normalizedAmount} XRP`
+        : "Top-up completed"),
     completed: true,
   });
 
-  console.log("Top-up order created:", topupOrder);
+  const usdText =
+    usdAmount !== null && usdAmount !== undefined
+      ? `USD ${Number(usdAmount).toFixed(2)} → `
+      : "";
 
-  const nextBalance = Number(
-    (Number(buyer.account_balance || 0) + normalizedAmount).toFixed(6)
-  );
-
-  const { error: updateBuyerError } = await db
-    .from("buyers")
-    .update({ account_balance: nextBalance })
-    .eq("user_id", userId);
-
-  if (updateBuyerError) {
-    console.error("Buyer balance update failed:", updateBuyerError);
-    throw updateBuyerError;
-  }
-
-  console.log("Buyer balance updated:", {
-    userId,
-    previousBalance: Number(buyer.account_balance || 0),
-    addedAmount: normalizedAmount,
-    newBalance: nextBalance,
-  });
-
-  let xrplTxHash = null;
-
-  if (AUTO_FUND_XRPL_ON_TOPUP && user.wallet_address) {
-    try {
-      console.log("Sending XRP from treasury to buyer wallet:", {
-        destination: user.wallet_address,
-        amountXrp: normalizedAmount,
-      });
-
-      const xrplResult = await xrplService.sendXrpFromTreasury({
-        destination: user.wallet_address,
-        amountXrp: normalizedAmount,
-      });
-
-      xrplTxHash = xrplResult?.hash || null;
-
-      console.log("XRPL funding success:", {
-        userId,
-        walletAddress: user.wallet_address,
-        xrplTxHash,
-      });
-
-      const { error: updateTopupHashError } = await db
-        .from("topup_orders")
-        .update({ tx_hash: xrplTxHash })
-        .eq("topup_id", topupOrder.topup_id);
-
-      if (updateTopupHashError) {
-        console.error(
-          "Failed to save XRPL tx hash to topup_orders:",
-          updateTopupHashError
-        );
-      }
-    } catch (error) {
-      console.error("XRPL treasury funding failed:", error);
-    }
-  } else {
-    console.log("XRPL funding skipped:", {
-      AUTO_FUND_XRPL_ON_TOPUP,
-      hasWalletAddress: Boolean(user.wallet_address),
-    });
-  }
-
-  const walletTx = await createWalletTransaction({
+  await createWalletTransaction({
     userId,
     type: "topup",
     direction: "credit",
     amount: normalizedAmount,
     status: "completed",
-    description:
-      method === "demo_card"
-        ? "Card top-up completed"
-        : "Wallet top-up completed",
-    txHash: xrplTxHash,
+    description: `Card top-up completed: ${usdText}${normalizedAmount.toFixed(
+      6
+    )} XRP`,
+    txHash: xrplFundingHash,
     referenceTable: "topup_orders",
-    referenceId: topupOrder.topup_id,
+    referenceId: topup.topup_id,
   });
 
-  console.log("Wallet transaction created:", walletTx);
+  try {
+    await activityService.logActivity({
+      userId,
+      type: "topup",
+      title: "Wallet Top Up",
+      description: `Wallet topped up by ${normalizedAmount.toFixed(2)} XRP`,
+      amountXrp: normalizedAmount,
+      status: "completed",
+      referenceTable: "topup_orders",
+      referenceId: topup.topup_id,
+      metadata: {
+        external_reference: externalReference,
+        tx_hash: xrplFundingHash,
+        usd_amount: usdAmount ?? null,
+        xrp_usd_rate: xrpUsdRate ?? null,
+        xrpl_funding_error: xrplFundingError,
+      },
+    });
+  } catch (activityError) {
+    console.error("Top-up activity log failed:", activityError);
+  }
 
   return {
-    topupOrder: {
-      ...topupOrder,
-      tx_hash: xrplTxHash,
-    },
-    newBalance: nextBalance,
-    xrplTxHash,
-    duplicate: false,
+    topup,
+    newBalance: Number(updatedBuyer.account_balance || newBalance),
+    txHash: xrplFundingHash,
+    xrplFundingError,
   };
 };
 
 const getRecipeForPurchase = async (recipeId) => {
   const { data, error } = await db
     .from("recipes")
-    .select("recipe_id, chef_id, title, price, status")
+    .select("recipe_id, title, price, chef_id, status")
     .eq("recipe_id", recipeId)
     .single();
 
@@ -332,61 +504,128 @@ const getRecipeForPurchase = async (recipeId) => {
   return data;
 };
 
+const ensurePurchaseLedgerEntry = async ({
+  userId,
+  paymentId,
+  recipeId,
+  recipeTitle = "Recipe",
+  amount,
+  txHash = null,
+}) => {
+  if (!userId || !paymentId) {
+    return null;
+  }
+
+  const normalizedAmount = toAmount(amount);
+
+  const { data: existingByReference, error: existingByReferenceError } = await db
+    .from("wallet_transactions")
+    .select("transaction_id")
+    .eq("user_id", userId)
+    .eq("reference_table", "payments")
+    .eq("reference_id", paymentId)
+    .maybeSingle();
+
+  if (existingByReferenceError) {
+    console.error("Purchase ledger reference check failed:", existingByReferenceError);
+  }
+
+  if (!existingByReference && txHash) {
+    const { data: existingByHash, error: existingByHashError } = await db
+      .from("wallet_transactions")
+      .select("transaction_id")
+      .eq("user_id", userId)
+      .eq("tx_hash", txHash)
+      .maybeSingle();
+
+    if (existingByHashError) {
+      console.error("Purchase ledger hash check failed:", existingByHashError);
+    }
+
+    if (existingByHash) {
+      return existingByHash;
+    }
+  }
+
+  if (existingByReference) {
+    return existingByReference;
+  }
+
+  const walletTransaction = await createWalletTransaction({
+    userId,
+    type: "purchase",
+    direction: "debit",
+    amount: normalizedAmount,
+    status: "completed",
+    description: `Purchased recipe: ${recipeTitle || "Recipe"}`,
+    txHash,
+    referenceTable: "payments",
+    referenceId: paymentId,
+  });
+
+  try {
+    const { data: existingActivity, error: existingActivityError } = await db
+      .from("user_activities")
+      .select("activity_id")
+      .eq("user_id", userId)
+      .eq("reference_table", "payments")
+      .eq("reference_id", paymentId)
+      .maybeSingle();
+
+    if (existingActivityError) {
+      console.error("Purchase activity duplicate check failed:", existingActivityError);
+    }
+
+    if (!existingActivity) {
+      await activityService.logActivity({
+        userId,
+        type: "purchase",
+        title: "Recipe Purchase",
+        description: `Purchased recipe: ${recipeTitle || "Recipe"}`,
+        amountXrp: normalizedAmount,
+        status: "completed",
+        referenceTable: "payments",
+        referenceId: paymentId,
+        metadata: {
+          recipe_id: recipeId,
+          tx_hash: txHash,
+        },
+      });
+    }
+  } catch (activityError) {
+    console.error("Purchase activity log failed:", activityError);
+  }
+
+  return walletTransaction;
+};
+
 const buyRecipeWithBalance = async (userId, recipeId) => {
   const buyer = await requireBuyer(userId);
   const recipe = await getRecipeForPurchase(recipeId);
 
-  if (!recipe.chef_id) {
-    throw new Error("Recipe seller not found");
-  }
+  const price = toAmount(recipe.price);
 
-  const price = Number(recipe.price || 0);
-
-  if (price <= 0) {
-    throw new Error("Invalid recipe price");
-  }
-
-  const currentBalance = Number(buyer.account_balance || 0);
-
-  if (currentBalance < price) {
-    throw new Error("Insufficient balance");
-  }
-
-  const { data: existingPurchase } = await db
+  const { data: existingPurchase, error: existingPurchaseError } = await db
     .from("recipe_purchases")
     .select("purchase_id")
     .eq("buyer_id", userId)
     .eq("recipe_id", recipeId)
     .maybeSingle();
 
+  if (existingPurchaseError) throw existingPurchaseError;
+
   if (existingPurchase) {
-    throw new Error("Recipe already purchased");
+    throw new Error("You already purchased this recipe");
   }
 
+  if (Number(buyer.account_balance || 0) < price) {
+    throw new Error("Insufficient balance");
+  }
+
+  const sellerId = recipe.chef_id;
   const commissionAmount = Number((price * PLATFORM_COMMISSION_RATE).toFixed(6));
   const sellerAmount = Number((price - commissionAmount).toFixed(6));
-  const newBalance = Number((currentBalance - price).toFixed(6));
-
-  const { data: payment, error: paymentError } = await db
-    .from("payments")
-    .insert([
-      {
-        buyer_id: userId,
-        seller_id: recipe.chef_id,
-        recipe_id: recipeId,
-        amount: price,
-        payment_hash: null,
-        status: "completed",
-        payment_type: "recipe_purchase",
-        commission_amount: commissionAmount,
-        seller_amount: sellerAmount,
-        updated_at: new Date().toISOString(),
-      },
-    ])
-    .select()
-    .single();
-
-  if (paymentError) throw paymentError;
+  const newBalance = Number((Number(buyer.account_balance || 0) - price).toFixed(6));
 
   const { error: updateBuyerError } = await db
     .from("buyers")
@@ -401,86 +640,47 @@ const buyRecipeWithBalance = async (userId, recipeId) => {
 
   if (updateBuyerError) throw updateBuyerError;
 
-  const { data: seller, error: sellerError } = await db
-    .from("sellers")
-    .select("user_id, total_sales, earnings_xrp, account_balance")
-    .eq("user_id", recipe.chef_id)
-    .single();
-
-  if (sellerError || !seller) {
-    throw new Error("Seller not found");
-  }
-
-  const nextSellerBalance = Number(
-    (Number(seller.account_balance || 0) + sellerAmount).toFixed(6)
-  );
-
-  const nextSellerEarnings = Number(
-    (Number(seller.earnings_xrp || 0) + sellerAmount).toFixed(6)
-  );
-
-  const { error: updateSellerError } = await db
-    .from("sellers")
-    .update({
-      account_balance: nextSellerBalance,
-      earnings_xrp: nextSellerEarnings,
-      total_sales: Number(seller.total_sales || 0) + 1,
-    })
-    .eq("user_id", recipe.chef_id);
-
-  if (updateSellerError) throw updateSellerError;
-
-  const { data: chefRecord } = await db
-    .from("chef_records")
-    .select("record_id, total_earnings")
-    .eq("chef_id", recipe.chef_id)
-    .maybeSingle();
-
-  let recordId = null;
-
-  if (chefRecord?.record_id) {
-    recordId = chefRecord.record_id;
-
-    const { error: updateChefRecordError } = await db
-      .from("chef_records")
-      .update({
-        total_earnings: Number(
-          (Number(chefRecord.total_earnings || 0) + sellerAmount).toFixed(6)
-        ),
-      })
-      .eq("record_id", chefRecord.record_id);
-
-    if (updateChefRecordError) throw updateChefRecordError;
-  } else {
-    const { data: newChefRecord, error: createChefRecordError } = await db
-      .from("chef_records")
-      .insert([
-        {
-          chef_id: recipe.chef_id,
-          total_earnings: sellerAmount,
-          payout: 0,
-        },
-      ])
-      .select()
-      .single();
-
-    if (createChefRecordError) throw createChefRecordError;
-
-    recordId = newChefRecord.record_id;
-  }
-
-  const { error: createCommissionError } = await db
-    .from("commissions")
+  const { data: payment, error: paymentError } = await db
+    .from("payments")
     .insert([
       {
-        payment_id: payment.payment_id,
-        record_id: recordId,
-        admin_profit: commissionAmount,
-        chef_payout: sellerAmount,
+        buyer_id: userId,
+        seller_id: sellerId,
+        recipe_id: recipeId,
+        amount: price,
+        commission_amount: commissionAmount,
+        seller_amount: sellerAmount,
+        status: "completed",
+        payment_type: "recipe_purchase",
       },
-    ]);
+    ])
+    .select()
+    .single();
 
-  if (createCommissionError) throw createCommissionError;
+  if (paymentError) throw paymentError;
+
+  if (sellerId) {
+    const { data: seller } = await db
+      .from("sellers")
+      .select("user_id, account_balance, total_sales, earnings_xrp")
+      .eq("user_id", sellerId)
+      .maybeSingle();
+
+    if (seller) {
+      await db
+        .from("sellers")
+        .update({
+          account_balance: Number(
+            (Number(seller.account_balance || 0) + sellerAmount).toFixed(6)
+          ),
+          total_sales: Number(seller.total_sales || 0) + 1,
+          earnings_xrp: Number(
+            (Number(seller.earnings_xrp || 0) + sellerAmount).toFixed(6)
+          ),
+        })
+        .eq("user_id", sellerId);
+    }
+  }
 
   const { error: createRecipePurchaseError } = await db
     .from("recipe_purchases")
@@ -494,38 +694,17 @@ const buyRecipeWithBalance = async (userId, recipeId) => {
 
   if (createRecipePurchaseError) throw createRecipePurchaseError;
 
-  const walletTx = await createWalletTransaction({
+  await ensurePurchaseLedgerEntry({
     userId,
-    type: "purchase",
-    direction: "debit",
+    paymentId: payment.payment_id,
+    recipeId,
+    recipeTitle: recipe.title,
     amount: price,
-    status: "completed",
-    description: `Purchased recipe: ${recipe.title || "Recipe"}`,
-    referenceTable: "payments",
-    referenceId: payment.payment_id,
-  });
-
-  await activityService.logActivity({
-    userId,
-    type: "purchase",
-    title: recipe.title || "Recipe Purchase",
-    description: `Purchased recipe: ${recipe.title || "Recipe"}`,
-    amountXrp: price,
-    status: "completed",
-    referenceTable: "payments",
-    referenceId: payment.payment_id,
-    metadata: {
-      recipe_id: recipeId,
-      seller_id: recipe.chef_id,
-      wallet_transaction_id: walletTx?.transaction_id || walletTx?.id || null,
-    },
+    txHash: payment.payment_hash || null,
   });
 
   return {
-    payment: {
-      ...payment,
-      recipe_title: recipe.title,
-    },
+    payment,
     newBalance,
     commissionAmount,
     sellerAmount,
@@ -562,6 +741,17 @@ const requestWithdrawal = async (userId, body) => {
     .single();
 
   if (error) throw error;
+
+  await createWalletTransaction({
+    userId,
+    type: "withdrawal",
+    direction: "debit",
+    amount,
+    status: "pending",
+    description: "Withdrawal request submitted",
+    referenceTable: "withdrawal_requests",
+    referenceId: data.withdrawal_id,
+  });
 
   return data;
 };
@@ -601,6 +791,17 @@ const requestRefund = async (userId, body) => {
 
   if (insertError) throw insertError;
 
+  await createWalletTransaction({
+    userId,
+    type: "refund",
+    direction: "credit",
+    amount: Number(payment.amount || 0),
+    status: "pending",
+    description: "Refund request submitted",
+    referenceTable: "refund_requests",
+    referenceId: data.refund_id,
+  });
+
   return data;
 };
 
@@ -612,4 +813,8 @@ export default {
   buyRecipeWithBalance,
   requestWithdrawal,
   requestRefund,
+  ensurePurchaseLedgerEntry,
+  getXrpUsdRate: xrpRateService.getXrpUsdRate,
+  convertUsdToXrp: xrpRateService.convertUsdToXrp,
+  convertXrpToUsd: xrpRateService.convertXrpToUsd,
 };

@@ -1,41 +1,60 @@
-import { supabase } from "../config/supabase.js";
+// src/services/buyerService.js
+
+import { supabase, supabaseAdmin } from "../config/supabase.js";
 import { uploadBufferToCloudinary } from "../utils/uploadToCloudinary.js";
 import activityService from "./activityService.js";
 
-/**
- * Keeps display name safe and readable.
- * If the user gives an invalid/too-short name, fallback prevents empty profile names.
- */
+const db = supabaseAdmin || supabase;
+
+const MAX_DISPLAY_NAME_LENGTH = 80;
+const MAX_BIO_LENGTH = 500;
+
+const getEmailFallbackName = (email = "") => {
+  const prefix = String(email || "").split("@")[0] || "Buyer";
+
+  return prefix
+    .replace(/[._-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
 const sanitizeDisplayName = (value, fallback) => {
-  const cleaned = String(value || "").trim();
-  if (cleaned.length >= 3) return cleaned;
-  return fallback;
+  const cleaned = String(value || "")
+    .trim()
+    .replace(/\s+/g, " ");
+
+  if (!cleaned) return fallback || "RecipeChain Buyer";
+
+  if (cleaned.length > MAX_DISPLAY_NAME_LENGTH) {
+    return cleaned.slice(0, MAX_DISPLAY_NAME_LENGTH).trim();
+  }
+
+  return cleaned;
 };
 
-/**
- * Limits bio length so very large text cannot be stored/displayed in the profile UI.
- */
 const sanitizeBio = (value) => {
-  return String(value || "").trim().slice(0, 500);
+  const cleaned = String(value || "").trim();
+
+  if (cleaned.length > MAX_BIO_LENGTH) {
+    return cleaned.slice(0, MAX_BIO_LENGTH).trim();
+  }
+
+  return cleaned;
 };
 
-/**
- * Uses email as fallback profile name when buyer has not set a display name yet.
- */
-const getEmailFallbackName = (email) => {
-  const safeEmail = String(email || "").trim();
-  if (!safeEmail) return "Buyer";
-  return safeEmail;
+const toNumber = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const clampProgress = (value, target) => {
-  const current = Number(value || 0);
-  const max = Number(target || 0);
+const clampProgress = (current, target) => {
+  const safeCurrent = Number(current || 0);
+  const safeTarget = Number(target || 0);
 
-  if (!Number.isFinite(current) || current <= 0) return 0;
-  if (!Number.isFinite(max) || max <= 0) return current;
+  if (!safeTarget || safeTarget <= 0) return 0;
 
-  return Math.min(current, max);
+  return Math.min(Math.max(safeCurrent, 0), safeTarget);
 };
 
 const buildBadge = ({ key, title, description, current, target }) => {
@@ -52,10 +71,6 @@ const buildBadge = ({ key, title, description, current, target }) => {
   };
 };
 
-/**
- * Builds achievement/badge state from buyer activity statistics.
- * These values are calculated for display only; they do not need separate DB rows.
- */
 const computeBuyerBadges = ({
   totalPurchases = 0,
   totalSpentXrp = 0,
@@ -113,11 +128,6 @@ const truncateForActivity = (value, maxLength = 40) => {
   return `${cleaned.slice(0, maxLength).trim()}...`;
 };
 
-/**
- * Builds clear profile update activity text.
- * Display name can safely show from/to values.
- * Bio/introduction is only shown as updated to avoid long messy activity rows.
- */
 const buildProfileUpdateActivity = ({
   previousDisplayName,
   nextDisplayName,
@@ -158,71 +168,257 @@ const buildProfileUpdateActivity = ({
   };
 };
 
-/**
- * Fallback activity builder.
- * This is used only if user_activities table has no records yet.
- * It keeps old payment-based activity working while new activity logging is added.
- */
-const getFallbackPaymentActivities = async ({ userId, limit = 10 }) => {
-  const { data: recentPayments, error: paymentsError } = await supabase
-    .from("payments")
-    .select("payment_id, amount, status, time_stamp, recipe_id")
-    .eq("buyer_id", userId)
-    .order("time_stamp", { ascending: false })
-    .limit(limit);
+const sortActivitiesDesc = (a, b) => {
+  const aTime = new Date(a.date || a.created_at || "").getTime();
+  const bTime = new Date(b.date || b.created_at || "").getTime();
 
-  if (paymentsError) throw paymentsError;
+  return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
+};
 
-  const recipeIds = (recentPayments || [])
-    .map((item) => item.recipe_id)
-    .filter(Boolean);
+const getPurchasedStatsFromRecipePurchases = async (userId) => {
+  const { data: purchaseRows, error: purchaseRowsError } = await db
+    .from("recipe_purchases")
+    .select("purchase_id, recipe_id, payment_id, unlocked_at")
+    .eq("buyer_id", userId);
 
-  let recipeMap = {};
+  if (purchaseRowsError) throw purchaseRowsError;
+
+  const safePurchaseRows = purchaseRows || [];
+  const totalPurchases = safePurchaseRows.length;
+
+  if (totalPurchases === 0) {
+    return {
+      totalPurchases: 0,
+      totalSpentXrp: 0,
+      purchaseRows: [],
+      paymentIds: [],
+      recipeIds: [],
+      paymentsById: new Map(),
+      recipesById: new Map(),
+    };
+  }
+
+  const paymentIds = [
+    ...new Set(
+      safePurchaseRows
+        .map((row) => row.payment_id)
+        .filter((paymentId) => Boolean(paymentId))
+    ),
+  ];
+
+  const recipeIds = [
+    ...new Set(
+      safePurchaseRows
+        .map((row) => row.recipe_id)
+        .filter((recipeId) => Boolean(recipeId))
+    ),
+  ];
+
+  let paymentsById = new Map();
+
+  if (paymentIds.length > 0) {
+    /**
+     * IMPORTANT:
+     * Do not select payments.created_at because your payments table does not have it.
+     */
+    const { data: payments, error: paymentsError } = await db
+      .from("payments")
+      .select("payment_id, amount, status, payment_type, recipe_id, payment_hash, time_stamp, updated_at")
+      .in("payment_id", paymentIds);
+
+    if (paymentsError) throw paymentsError;
+
+    paymentsById = new Map(
+      (payments || []).map((payment) => [payment.payment_id, payment])
+    );
+  }
+
+  let recipesById = new Map();
 
   if (recipeIds.length > 0) {
-    const { data: recipes, error: recipesError } = await supabase
+    const { data: recipes, error: recipesError } = await db
       .from("recipes")
-      .select("recipe_id, title")
+      .select("recipe_id, title, price")
       .in("recipe_id", recipeIds);
 
     if (recipesError) throw recipesError;
 
-    recipeMap = Object.fromEntries((recipes || []).map((r) => [r.recipe_id, r]));
+    recipesById = new Map(
+      (recipes || []).map((recipe) => [recipe.recipe_id, recipe])
+    );
   }
 
-  return (recentPayments || []).map((payment) => ({
-    id: payment.payment_id,
-    title: recipeMap[payment.recipe_id]?.title || "Recipe Purchase",
-    description: `Purchased recipe: ${
-      recipeMap[payment.recipe_id]?.title || "Recipe"
-    }`,
-    amount_xrp: Number(payment.amount || 0),
-    status: payment.status || "pending",
-    type: "purchase",
-    date: payment.time_stamp,
-    reference_table: "payments",
-    reference_id: payment.payment_id,
-    metadata: {
-      recipe_id: payment.recipe_id,
-    },
-  }));
+  const totalSpentXrp = safePurchaseRows.reduce((sum, purchase) => {
+    const payment = purchase.payment_id
+      ? paymentsById.get(purchase.payment_id)
+      : null;
+
+    if (
+      payment &&
+      payment.payment_type === "recipe_purchase" &&
+      payment.status === "completed"
+    ) {
+      return sum + toNumber(payment.amount);
+    }
+
+    const recipe = purchase.recipe_id ? recipesById.get(purchase.recipe_id) : null;
+
+    return sum + toNumber(recipe?.price);
+  }, 0);
+
+  return {
+    totalPurchases,
+    totalSpentXrp: Number(totalSpentXrp.toFixed(6)),
+    purchaseRows: safePurchaseRows,
+    paymentIds,
+    recipeIds,
+    paymentsById,
+    recipesById,
+  };
 };
 
-/**
- * Builds the complete buyer profile response used by the frontend profile page.
- */
+const syncBuyerDerivedStats = async ({
+  userId,
+  totalPurchases,
+  totalSpentXrp,
+}) => {
+  const { error } = await db
+    .from("buyers")
+    .update({
+      total_purchases: totalPurchases,
+      total_spent_xrp: totalSpentXrp,
+    })
+    .eq("user_id", userId);
+
+  if (error) {
+    console.error("Failed to sync buyer derived stats:", error);
+  }
+};
+
+const filterPurchaseActivitiesByCurrentPurchases = ({
+  activities,
+  paymentIds,
+  recipeIds,
+}) => {
+  const paymentIdSet = new Set((paymentIds || []).map((id) => String(id)));
+  const recipeIdSet = new Set((recipeIds || []).map((id) => String(id)));
+
+  return (activities || []).filter((activity) => {
+    if (activity.type !== "purchase") return true;
+
+    const referenceId = String(activity.reference_id || "");
+    const metadataRecipeId = String(activity.metadata?.recipe_id || "");
+
+    if (referenceId && paymentIdSet.has(referenceId)) return true;
+    if (metadataRecipeId && recipeIdSet.has(metadataRecipeId)) return true;
+
+    return false;
+  });
+};
+
+const buildPurchaseActivitiesFromCurrentPurchases = (purchaseStats) => {
+  return (purchaseStats.purchaseRows || [])
+    .map((purchase) => {
+      const payment = purchase.payment_id
+        ? purchaseStats.paymentsById.get(purchase.payment_id)
+        : null;
+
+      const recipe = purchase.recipe_id
+        ? purchaseStats.recipesById.get(purchase.recipe_id)
+        : null;
+
+      const title = recipe?.title || "Recipe Purchase";
+      const amount = payment ? toNumber(payment.amount) : toNumber(recipe?.price);
+      const date =
+        purchase.unlocked_at ||
+        payment?.time_stamp ||
+        payment?.updated_at ||
+        "";
+
+      return {
+        id: `purchase-${purchase.purchase_id}`,
+        title: "Recipe Purchase",
+        description: `Purchased recipe: ${title}`,
+        amount_xrp: amount,
+        status: "completed",
+        type: "purchase",
+        date,
+        reference_table: "payments",
+        reference_id: purchase.payment_id || purchase.purchase_id,
+        metadata: {
+          recipe_id: purchase.recipe_id,
+          recipe_title: title,
+          purchase_id: purchase.purchase_id,
+          payment_hash: payment?.payment_hash || null,
+        },
+      };
+    })
+    .filter(Boolean);
+};
+
+const mergeActivitiesWithPurchaseFallbacks = ({
+  activities,
+  purchaseStats,
+}) => {
+  const filteredActivities = filterPurchaseActivitiesByCurrentPurchases({
+    activities,
+    paymentIds: purchaseStats.paymentIds,
+    recipeIds: purchaseStats.recipeIds,
+  });
+
+  const existingPurchaseKeys = new Set();
+
+  for (const activity of filteredActivities) {
+    if (activity.type !== "purchase") continue;
+
+    const referenceKey =
+      activity.reference_table && activity.reference_id
+        ? `${activity.reference_table}:${activity.reference_id}`
+        : "";
+
+    const recipeKey = activity.metadata?.recipe_id
+      ? `recipe:${activity.metadata.recipe_id}`
+      : "";
+
+    if (referenceKey) existingPurchaseKeys.add(referenceKey);
+    if (recipeKey) existingPurchaseKeys.add(recipeKey);
+  }
+
+  const fallbackPurchaseActivities = buildPurchaseActivitiesFromCurrentPurchases(
+    purchaseStats
+  ).filter((activity) => {
+    const referenceKey =
+      activity.reference_table && activity.reference_id
+        ? `${activity.reference_table}:${activity.reference_id}`
+        : "";
+
+    const recipeKey = activity.metadata?.recipe_id
+      ? `recipe:${activity.metadata.recipe_id}`
+      : "";
+
+    return (
+      !existingPurchaseKeys.has(referenceKey) &&
+      !existingPurchaseKeys.has(recipeKey)
+    );
+  });
+
+  return [...filteredActivities, ...fallbackPurchaseActivities]
+    .sort(sortActivitiesDesc)
+    .slice(0, 50);
+};
+
 const buildBuyerProfile = async (userId) => {
-  const { data: buyer, error: buyerError } = await supabase
+  const { data: buyer, error: buyerError } = await db
     .from("buyers")
     .select(
-      "user_id, display_name, bio, profile_picture, total_purchases, total_spent_xrp, account_balance"
+      "display_name, bio, profile_picture, total_purchases, total_spent_xrp, account_balance"
     )
     .eq("user_id", userId)
     .single();
 
   if (buyerError) throw buyerError;
 
-  const { data: user, error: userError } = await supabase
+  const { data: user, error: userError } = await db
     .from("users")
     .select("user_id, email, wallet_address, created_at, role")
     .eq("user_id", userId)
@@ -230,50 +426,42 @@ const buildBuyerProfile = async (userId) => {
 
   if (userError) throw userError;
 
-  const { count: savedRecipesCount, error: savedRecipesError } = await supabase
+  const { count: savedRecipesCount, error: savedRecipesError } = await db
     .from("saved_recipes")
     .select("*", { count: "exact", head: true })
     .eq("user_id", userId);
 
   if (savedRecipesError) throw savedRecipesError;
 
-  const { count: feedbackCount, error: feedbackError } = await supabase
+  const { count: feedbackCount, error: feedbackError } = await db
     .from("feedbacks")
     .select("*", { count: "exact", head: true })
     .eq("buyer_id", userId);
 
   if (feedbackError) throw feedbackError;
 
-  const { count: purchasedRecipeCount, error: purchaseCountError } =
-    await supabase
-      .from("recipe_purchases")
-      .select("*", { count: "exact", head: true })
-      .eq("buyer_id", userId);
+  const purchaseStats = await getPurchasedStatsFromRecipePurchases(userId);
 
-  if (purchaseCountError) throw purchaseCountError;
+  const effectiveTotalPurchases = purchaseStats.totalPurchases;
+  const effectiveTotalSpentXrp = purchaseStats.totalSpentXrp;
 
-  const { count: completedPaymentCount, error: completedPaymentCountError } =
-    await supabase
-      .from("payments")
-      .select("*", { count: "exact", head: true })
-      .eq("buyer_id", userId)
-      .eq("payment_type", "recipe_purchase")
-      .eq("status", "completed");
-
-  if (completedPaymentCountError) throw completedPaymentCountError;
-
-  const effectiveTotalPurchases = Math.max(
-    Number(buyer.total_purchases || 0),
-    Number(purchasedRecipeCount || 0),
-    Number(completedPaymentCount || 0)
-  );
+  if (
+    Number(buyer.total_purchases || 0) !== effectiveTotalPurchases ||
+    Number(buyer.total_spent_xrp || 0) !== effectiveTotalSpentXrp
+  ) {
+    await syncBuyerDerivedStats({
+      userId,
+      totalPurchases: effectiveTotalPurchases,
+      totalSpentXrp: effectiveTotalSpentXrp,
+    });
+  }
 
   const userActivities = await activityService.getUserActivities({
     userId,
     limit: 50,
   });
 
-  let recentActivity = (userActivities || []).map((activity) => ({
+  const mappedActivities = (userActivities || []).map((activity) => ({
     id: activity.activity_id,
     title: activity.title || "Activity",
     description: activity.description || "",
@@ -286,16 +474,14 @@ const buildBuyerProfile = async (userId) => {
     metadata: activity.metadata || {},
   }));
 
-  if (recentActivity.length === 0) {
-    recentActivity = await getFallbackPaymentActivities({
-      userId,
-      limit: 10,
-    });
-  }
+  const recentActivity = mergeActivitiesWithPurchaseFallbacks({
+    activities: mappedActivities,
+    purchaseStats,
+  });
 
   const badges = computeBuyerBadges({
     totalPurchases: effectiveTotalPurchases,
-    totalSpentXrp: buyer.total_spent_xrp || 0,
+    totalSpentXrp: effectiveTotalSpentXrp,
     savedRecipes: savedRecipesCount || 0,
     feedbackCount: feedbackCount || 0,
   });
@@ -313,7 +499,7 @@ const buildBuyerProfile = async (userId) => {
     bio: buyer.bio || "",
     profile_picture: buyer.profile_picture || "",
     total_purchases: effectiveTotalPurchases,
-    total_spent_xrp: Number(buyer.total_spent_xrp || 0),
+    total_spent_xrp: effectiveTotalSpentXrp,
     account_balance: Number(buyer.account_balance || 0),
     saved_recipes_count: Number(savedRecipesCount || 0),
     feedback_count: Number(feedbackCount || 0),
@@ -324,19 +510,12 @@ const buildBuyerProfile = async (userId) => {
   };
 };
 
-/**
- * Returns the logged-in buyer's profile.
- */
 const getBuyerProfile = async ({ userId }) => {
   return await buildBuyerProfile(userId);
 };
 
-/**
- * Updates buyer profile details and optional profile image.
- * After update, the full rebuilt profile is returned so frontend receives fresh data.
- */
 const updateBuyerProfile = async ({ userId, body, file }) => {
-  const { data: existingBuyer, error: existingBuyerError } = await supabase
+  const { data: existingBuyer, error: existingBuyerError } = await db
     .from("buyers")
     .select("display_name, bio, profile_picture")
     .eq("user_id", userId)
@@ -344,7 +523,7 @@ const updateBuyerProfile = async ({ userId, body, file }) => {
 
   if (existingBuyerError) throw existingBuyerError;
 
-  const { data: user, error: userError } = await supabase
+  const { data: user, error: userError } = await db
     .from("users")
     .select("email")
     .eq("user_id", userId)
@@ -413,7 +592,7 @@ const updateBuyerProfile = async ({ userId, body, file }) => {
     nextProfilePicture,
   });
 
-  const { error: updateError } = await supabase
+  const { error: updateError } = await db
     .from("buyers")
     .update({
       display_name: nextDisplayName,

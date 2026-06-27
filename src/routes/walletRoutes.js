@@ -3,6 +3,7 @@ import { requireSession } from "../middleware/sessionMiddleware.js";
 import {
   getMyWalletOverview,
   getMyWalletTransactions,
+  getXrpUsdRate,
   createStripeTopupCheckoutSession,
   buyRecipe,
   createWithdrawalRequest,
@@ -13,7 +14,12 @@ const router = express.Router();
 
 router.get("/me", requireSession, getMyWalletOverview);
 router.get("/transactions", requireSession, getMyWalletTransactions);
-router.post("/topup/checkout-session", requireSession, createStripeTopupCheckoutSession);
+router.get("/xrp-rate", requireSession, getXrpUsdRate);
+router.post(
+  "/topup/checkout-session",
+  requireSession,
+  createStripeTopupCheckoutSession
+);
 router.post("/buy", requireSession, buyRecipe);
 router.post("/withdrawals", requireSession, createWithdrawalRequest);
 router.post("/refunds", requireSession, createRefundRequest);
