@@ -1,4 +1,4 @@
-import { supabase } from '../config/supabase.js'; // Adjust this path if your config file is named differently
+import { supabase } from '../config/supabase.js'; 
 
 export const getDashboardStatsService = async () => {
   try {

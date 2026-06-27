@@ -1,7 +1,4 @@
-//src/models/recipesModel.js
-
 import { supabase } from "../config/supabase.js";
-
 
 /**
  * Database Model: Fetches all published recipes with pagination.
@@ -141,8 +138,6 @@ export const deleteRecipeModel = async (id) => {
   return true;
 };
 
-// (Add this below the existing code)
-
 /**
  * Database Model: Retrieves a recipe along with its creator/seller ID.
  */
@@ -204,7 +199,7 @@ export const checkPurchaseStatusModel = async (buyerId, recipeId) => {
         .eq('recipe_id', recipeId)
         .single();
     
-    if (error && error.code !== 'PGRST116') { // PGRST116 means "No rows found"
+    if (error && error.code !== 'PGRST116') { 
         throw error;
     }
     return !!data; 
@@ -226,10 +221,7 @@ export const verifyRecipeModel = async (recipeId, { approval_status, rejection_r
   const { data, error } = await supabase
     .from('recipes')
     .update({ 
-      // 1. Only update the administrative status
       approval_status: approval_status, 
-      
-      // 2. Only save the reason if the status is 'rejected'
       rejection_reason: approval_status === 'rejected' ? rejection_reason : null 
     })
     .eq('recipe_id', recipeId)

@@ -127,10 +127,9 @@ class RecipeService {
       }
 
       // Load dynamic business rules (with safe fallbacks for math)
-      const feePercentage = parseFloat(process.env.PLATFORM_FEE_PERCENTAGE || "0.10");
+      const feePercentage = parseFloat(process.env.PLATFORM_COMMISSION_RATE);
       const sellerPercentage = 1 - feePercentage;
-      const slippageTolerance = parseFloat(process.env.XRPL_SLIPPAGE_TOLERANCE || "0.0001");
-
+      const slippageTolerance = parseFloat(process.env.XRPL_SLIPPAGE_TOLERANCE);
       // 2. Verify XRPL Transaction
       let client = new xrpl.Client(networkUrl);
       await client.connect();
