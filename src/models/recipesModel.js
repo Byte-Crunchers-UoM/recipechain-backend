@@ -1,9 +1,10 @@
+//src/models/recipesModel.js
 import { supabase } from "../config/supabase.js";
-
 /**
  * Database Model: Fetches all published recipes with pagination.
  */
 
+// Get All Recipes
 export const getAllRecipesModel = async (from, to) => {
   const { data, count, error } = await supabase
     .from('recipes')
@@ -14,8 +15,9 @@ export const getAllRecipesModel = async (from, to) => {
         *,
         feedback_images(*)
       )
-    `, { count: 'exact' }) // Required for totalItems calculation
+    `, { count: 'exact' }) 
     .eq('status', 'active')
+    .eq('approval_status', 'published') // Added approval_status filter
     .order('created_at', { ascending: false })
     .range(from, to); 
     
@@ -33,11 +35,12 @@ export const getAllRecipesModel = async (from, to) => {
 
   return { data: formattedData, totalCount: count };
 };
+
 /**
  * Database Model: Fetches recipes based on dynamic category filters
  * and joins the required tag constraints.
  */
-  export const getFilteredRecipesModel = async (filters) => {
+export const getFilteredRecipesModel = async (filters) => {
   const { difficulty_level, goal, dietary_tags, cuisine, meal_type, occasion } = filters;
   
   let query = supabase
@@ -51,6 +54,7 @@ export const getAllRecipesModel = async (from, to) => {
       tags:tag_id!inner (*)
     `)
     .eq('status', 'active')
+    .eq('approval_status', 'published'); // Added approval_status filter
 
   if(difficulty_level) query = query.ilike('difficulty_level', difficulty_level)
   if (goal) query = query.ilike('tags.goal', goal);
@@ -65,13 +69,15 @@ export const getAllRecipesModel = async (from, to) => {
   return data;
 };
 
-// Search Recipes (Updated for better partial matching)
+// Search Recipes 
 export const searchRecipesModel = async (searchTerm) => {
   const { data, error } = await supabase
     .from('recipes')
     .select('*, sellers:chef_id(full_name, display_name)') 
     .eq('status', 'active')
+    .eq('approval_status', 'published') // Added approval_status filter
     .ilike('title', `%${searchTerm}%`); 
+    
   if (error) throw error;
   return data;
 };
@@ -109,6 +115,8 @@ export const getRecipeByIdModel = async (id) => {
     rejection_reason: data.rejection_reason
   };
 };
+
+
 
 /**
  * Database Model: Applies updates to an existing recipe's database row.
@@ -150,7 +158,18 @@ export const getRecipeWithSellerModel = async (recipeId) => {
     if (error) throw error;
     return data;
 };
+/**
+ * Database Model: Bulk-inserts the per-recipe breakdown rows for a batch payment.
+ */
+export const savePaymentItemsModel = async (items) => {
+    const { data, error } = await supabase
+        .from('payment_items')
+        .insert(items)
+        .select();
 
+    if (error) throw error;
+    return data;
+};
 /**
  * Database Model: Inserts a record of a successful crypto payment into the DB.
  */
@@ -234,4 +253,50 @@ export const verifyRecipeModel = async (recipeId, { approval_status, rejection_r
   }
   
   return data;
+};
+
+/**
+ * Database Model: Fetches a set of recipes by ID, with seller info,
+ * for batch checkout price calculation.
+ */
+export const getRecipesByIdsModel = async (recipeIds) => {
+    const { data, error } = await supabase
+        .from('recipes')
+        .select('recipe_id, title, price, chef_id, status, sellers(user_id)')
+        .in('recipe_id', recipeIds);
+
+    if (error) throw error;
+    return data || [];
+};
+
+/**
+ * Database Model: Returns just the recipe_ids (from a given list) that
+ * this buyer has already purchased — used to exclude already-owned items
+ * from a batch charge.
+ */
+export const getPurchasedRecipeIdsModel = async (buyerId, recipeIds) => {
+    const { data, error } = await supabase
+        .from('recipe_purchases')
+        .select('recipe_id')
+        .eq('buyer_id', buyerId)
+        .in('recipe_id', recipeIds);
+
+    if (error) throw error;
+    return (data || []).map((row) => row.recipe_id);
+};
+
+/**
+ * Database Model: Checks whether a given XRPL transaction hash has already
+ * been recorded as a payment. Powers idempotent batch-unlock requests.
+ */
+export const getExistingPaymentByHashModel = async (transactionHash) => {
+    const { data, error } = await supabase
+        .from('payments')
+        .select('payment_id, batch_id')
+        .eq('payment_hash', transactionHash)
+        .limit(1)
+        .maybeSingle();
+
+    if (error) throw error;
+    return data;
 };

@@ -325,3 +325,64 @@ export const unlockRecipe = async (req, res, next) => {
         next(err);
     }
 };
+/**
+ * Returns an authoritative price quote for a set of recipe IDs before
+ * the buyer signs an on-chain transaction. Works for guests too (no
+ * "already purchased" filtering without a session, but pricing is correct).
+ */
+export const getCheckoutQuote = async (req, res, next) => {
+    try {
+        const { recipeIds } = req.body;
+        const buyerId = req.user?.user_id || req.user?.id || null;
+
+        if (!Array.isArray(recipeIds) || recipeIds.length === 0) {
+            return res.status(400).json({ success: false, message: 'recipeIds must be a non-empty array' });
+        }
+
+        const quote = await recipeService.getCheckoutQuote(buyerId, recipeIds);
+        return sendResponse(res, 200, true, 'Quote calculated successfully', quote);
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * Verifies one XRPL transaction and unlocks every payable recipe in the
+ * batch under a shared batch_id.
+ */
+export const unlockRecipesBatch = async (req, res, next) => {
+    try {
+        const { recipeIds, transactionHash } = req.body;
+        const buyerId = req.user.user_id || req.user.id;
+
+        if (!Array.isArray(recipeIds) || recipeIds.length === 0 || !transactionHash) {
+            return res.status(400).json({
+                success: false,
+                message: 'recipeIds (array) and transactionHash are required',
+            });
+        }
+
+        const result = await recipeService.processBatchRecipeUnlock(buyerId, recipeIds, transactionHash);
+
+        return sendResponse(
+            res,
+            200,
+            true,
+            result.alreadyProcessed
+                ? 'This payment was already processed.'
+                : `Unlocked ${result.unlocked.length} recipe(s) successfully!`,
+            result
+        );
+    } catch (err) {
+        if (
+            err.message.includes('Insufficient') ||
+            err.message.includes('incorrect') ||
+            err.message.includes('successful') ||
+            err.message.includes('Nothing to unlock') ||
+            err.message.includes('could not be found')
+        ) {
+            return res.status(400).json({ success: false, message: err.message });
+        }
+        next(err);
+    }
+};
