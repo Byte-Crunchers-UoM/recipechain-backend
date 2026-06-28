@@ -1,5 +1,5 @@
 import express from 'express';
-import { createUser, getUserById, getAllUsers, updateUser, deleteUser } from '../controllers/userController.js';
+import { createUser, getUserById, getAllUsers, updateUser, deleteUser, getChefProfile, getMe, followUser } from '../controllers/userController.js';
 import validateUser from '../middleware/inputValidators.js';
 import { protectAdmin } from '../middleware/authMiddleware.js';
 
@@ -12,5 +12,8 @@ router.get("/users", getAllUsers);
 router.get('/all', protectAdmin, getAllUsers);
 router.put("/user/:id", validateUser, updateUser);
 router.delete("/user/:id", deleteUser);
+router.get("/user/chef/:id", getChefProfile);
+router.post("/user/:id/follow", followUser);
+router.get("/me", getMe);
 
 export default router;

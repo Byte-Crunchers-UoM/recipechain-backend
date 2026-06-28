@@ -4,7 +4,8 @@ import {
         getRecipeById,
         updateRecipe,
         deleteRecipe,
-        getTrendingRecipes
+        getTrendingRecipes,
+        getRecipesByChef
 } from '../controllers/recipeController.js';
 
 const router = express.Router();
@@ -15,6 +16,9 @@ router.post('/', addRecipe);
 
 // TRENDING (Must be before /:id)
 router.get('/trending', getTrendingRecipes);
+
+// READ CHEF RECIPES (Must be before /:id)
+router.get('/chef/:id', getRecipesByChef);
 
 //READ
 router.get('/:id', getRecipeById);

@@ -7,13 +7,14 @@ import cors from 'cors';
 import { testConnection } from './config/supabase.js';
 import userRoutes from './routes/userRoutes.js';
 import recipeRoutes from './routes/recipeRoutes.js';
+import followedChefsRoutes from './routes/followedChefsRoutes.js';
 import errorHandler from './middleware/errorHandler.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 
 app.use(cors({
-  origin: 'http://localhost:3000', // Specifically allow your frontend
+  origin: ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002'], // Allow all frontend ports
   credentials: true, // Allow cookies/sessions
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
@@ -53,10 +54,23 @@ app.get('/test-db', async (req, res) => {
   }
 });
 
-// API routes
-app.use('/api', userRoutes);
-app.use('/api/recipes', recipeRoutes);
-app.use('/api/auth', authRoutes);
+// API routes grouped under /api
+const apiRouter = express.Router();
+apiRouter.use('/users', userRoutes); // Becomes /api/users
+apiRouter.use('/chefs', followedChefsRoutes); // Becomes /api/chefs
+apiRouter.use('/recipes', recipeRoutes); // Becomes /api/recipes
+apiRouter.use('/auth', authRoutes); // Becomes /api/auth
+apiRouter.use('/', userRoutes); // Keep this if you have routes directly on /api (like /api/user)
+
+app.use('/api', apiRouter);
+
+// Catch-all for undefined API routes
+apiRouter.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: `API route not found: ${req.method} ${req.originalUrl}`
+  });
+});
 
 // Error handler (must be after all routes)
 app.use(errorHandler);

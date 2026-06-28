@@ -64,3 +64,48 @@ export const deleteUser = async (req, res, next) => {
         next(err);
     }
 }
+
+export const getChefProfile = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const profile = await userService.getChefProfile(id);
+        return sendResponse(res, 200, true, 'Chef profile retrieved successfully', profile);
+    } catch (err) {
+        next(err);
+    }
+}
+
+export const getMe = async (req, res, next) => {
+    try {
+        // If auth middleware populated req.user, use it
+        if (req.user) {
+            return sendResponse(res, 200, true, 'Current user retrieved', req.user);
+        }
+        
+        // Fallback for development/demo if not logged in
+        return sendResponse(res, 200, true, 'Demo user retrieved', {
+            id: 'demo-user-id',
+            username: 'Demo User',
+            email: 'demo@example.com',
+            role: 'user'
+        });
+    } catch (err) {
+        next(err);
+    }
+}
+
+export const followUser = async (req, res, next) => {
+    try {
+        const { id } = req.params; // Chef ID
+        const { buyerId } = req.body; // Buyer ID
+        
+        if (!buyerId) {
+            return sendResponse(res, 400, false, 'Buyer ID is required');
+        }
+
+        const updatedSeller = await userService.incrementFollowers(id);
+        return sendResponse(res, 200, true, 'Successfully followed chef', updatedSeller);
+    } catch (err) {
+        next(err);
+    }
+}

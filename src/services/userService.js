@@ -4,7 +4,9 @@ import {
   getUserByEmailModel,
   getAllUsersModel,
   updateUserModel,
-  deleteUserModel
+  deleteUserModel,
+  getChefProfileModel,
+  incrementFollowersModel
 } from '../models/userModel.js';
 
 // Business logic layer
@@ -44,7 +46,7 @@ class UserService {
 
   async getUserById(id) {
     // Validate ID
-    if (!id || isNaN(id)) {
+    if (!id) {
       throw new Error('Invalid user ID');
     }
 
@@ -59,7 +61,7 @@ class UserService {
 
   async updateUser(id, username, email) {
     // Validate ID
-    if (!id || isNaN(id)) {
+    if (!id) {
       throw new Error('Invalid user ID');
     }
 
@@ -91,7 +93,7 @@ class UserService {
 
   async deleteUser(id) {
     // Validate ID
-    if (!id || isNaN(id)) {
+    if (!id) {
       throw new Error('Invalid user ID');
     }
 
@@ -103,6 +105,20 @@ class UserService {
 
     await deleteUserModel(id);
     return { message: 'User deleted successfully' };
+  }
+
+  async getChefProfile(id) {
+    if (!id) {
+      throw new Error('Chef ID is required');
+    }
+    return await getChefProfileModel(id);
+  }
+  
+  async incrementFollowers(id) {
+    if (!id) {
+      throw new Error('Chef ID is required');
+    }
+    return await incrementFollowersModel(id);
   }
 }
 

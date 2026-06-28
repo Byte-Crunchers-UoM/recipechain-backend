@@ -3,7 +3,15 @@ import {
   getRecipeByIdModel,
   updateRecipeModel,
   deleteRecipeModel,
-  getAllRecipesModel
+  getAllRecipesModel,
+  upsertTrendingRecipeModel,
+  bulkUpsertTrendingRecipesModel,
+  getTrendingFromTableModel,
+  getAllFeedbacksModel,
+  getAllPurchasesModel,
+  getChefIdByRecipeIdModel,
+  getBuyerCountByRecipeIdModel,
+  getRecipesByChefIdModel
 } from "../models/recipesModel.js";
 
 class RecipeService {
@@ -17,82 +25,233 @@ class RecipeService {
   }
 
   async updateRecipe(id, updateData) {
-    return await updateRecipeModel(id, updateData);
+    // 1. Update the core recipe data
+    const updatedRecipe = await updateRecipeModel(id, updateData);
+
+    // 2. Aggregate data from other tables
+    const chefId = await getChefIdByRecipeIdModel(id);
+    const buyerCount = await getBuyerCountByRecipeIdModel(id);
+
+    // 3. Calculate latest heat score
+    const enrichedRecipe = this._calculateRecipeScore({
+      ...updatedRecipe,
+      buys: buyerCount
+    });
+
+    // 4. Sync with trending_recipes table
+    // If enrichedRecipe is null (filtered out), we still might want to track basic metrics
+    // but the user expects the heat_score to be working.
+    const heatScore = enrichedRecipe ? enrichedRecipe.heat_score : 0;
+
+    await upsertTrendingRecipeModel({
+      recipe_id: id,
+      chef_id: chefId,
+      created_at: updatedRecipe.created_at,
+      rating_avg: updatedRecipe.average_rating || updatedRecipe.rating || 0,
+      purchase_count: buyerCount,
+      heat_score: heatScore
+    });
+
+    return enrichedRecipe || { ...updatedRecipe, purchase_count: buyerCount, heat_score: 0 };
   }
 
   async deleteRecipe(id) {
     return await deleteRecipeModel(id);
   }
 
-  async getTrendingRecipes(limit = 10, category = null) {
-    const recipes = await getAllRecipesModel();
+  _calculateRecipeScore(recipe) {
+    if (!recipe) return null;
 
-    // Filter by category if provided
-    let filteredRecipes = recipes;
-    if (category) {
-      filteredRecipes = recipes.filter(
-        (r) => r.category && r.category.toLowerCase() === category.toLowerCase()
-      );
-    }
-
-    // Constants
-    const W_BUYS = 1;
-    const W_LIKES = 10;
+    // Weights and Constants
+    const W_BUYS = 10;
     const W_RATINGS = 20;
-    const GRAVITY = 1.8;
+    const GRAVITY = 1.5;
+    const TIME_OFFSET = 2;
 
     const now = new Date();
 
-    const scoredRecipes = filteredRecipes.map((recipe) => {
-      // 1. Normalize Rating (0-5 -> 0-1)
-      const rating = parseFloat(recipe.rating) || 0;
+    // Metrics Extraction
+    const buysCount = Array.isArray(recipe.buys)
+      ? recipe.buys.length
+      : (parseInt(recipe.buys) || 0);
 
-      // Safety Filter: Exclude if rating < 2.0 (unless it has 0 rating, which might mean new? User said < 2.0)
-      // Assuming 0 rating means "no rating yet" which might be fine for "new" items? 
-      // But strict adherence: if rating < 2.0, exclude. 
-      // If a new item has 0 rating, it will be excluded? 
-      // Usually new items have 0. Let's assume explicit bad rating < 2.0. 
-      // If rating is 0, is it < 2.0? Yes. 
-      // A safety filter usually targets "bad" content. New content is not "bad". 
-      // I'll stick to the user's "Rating < 2.0" rule. If it kills new items, that's the rule. 
-      // OR, maybe 0 means undefined. 
-      // Let's assume if rating > 0 and rating < 2.0 exclude.
-      // If rating is 0, let it pass? 
-      // "Exclude any item where the Rating is below a certain threshold (e.g. < 2.0)"
-      // I will implement strictly: if (rating > 0 && rating < 2.0) return null;
-      if (rating > 0 && rating < 2.0) return null;
+    const avgRating = parseFloat(recipe.average_rating) || parseFloat(recipe.rating) || 0;
+    const ratingCount = parseInt(recipe.rating_count) || (avgRating > 0 ? 1 : 0);
 
-      const ratingNorm = rating / 5;
-
-      // 2. Metrics
-      const buys = parseInt(recipe.buys) || 0;
-      const likes = parseInt(recipe.likes) || 0;
-
-      // 3. Time Decay
-      const createdAt = new Date(recipe.created_at);
-      // Calculate age in hours. formatting check: is created_at a string or date object?
-      // Assuming ISO string from supabase, new Date() works.
-      const ageInMs = now - createdAt;
-      const ageInHours = Math.max(0, ageInMs / (1000 * 60 * 60));
-
-      // 4. Calculate Score
-      // Formula: (W_buys * buys + W_likes * likes + W_ratings * ratingNorm) / (Time + Gravity)^Gravity
-      const numerator = (W_BUYS * buys) + (W_LIKES * likes) + (W_RATINGS * ratingNorm);
-      const denominator = Math.pow(ageInHours + GRAVITY, GRAVITY);
-
-      const score = numerator / denominator;
-
+    // Safety Filter: Exclude score calculation if rating average < 2.0
+    // But we still return the metrics
+    if (avgRating > 0 && avgRating < 2.0) {
       return {
         ...recipe,
-        heat_score: score, // valid for debugging/display
+        purchase_count: buysCount,
+        heat_score: 0,
       };
-    }).filter(recipe => recipe !== null);
+    }
 
-    // Sort by score descending
-    scoredRecipes.sort((a, b) => b.heat_score - a.heat_score);
+    // Time Decay
+    const createdAt = recipe.created_at ? new Date(recipe.created_at) : new Date();
+    const ageInMs = now - createdAt;
+    const ageInHours = Math.max(0, ageInMs / (1000 * 60 * 60));
 
-    // Return top N
-    return scoredRecipes.slice(0, limit);
+    // Calculate Score
+    // Formula: Score = ((buys * 10) + (Avg Rating * Rating Count * 20)) / (Hours since posted + 2)^1.5
+    const numerator = (buysCount * W_BUYS) + (avgRating * ratingCount * W_RATINGS);
+    const denominator = Math.pow(ageInHours + TIME_OFFSET, GRAVITY);
+
+    const score = isNaN(numerator / denominator) ? 0 : (numerator / denominator);
+
+    return {
+      ...recipe,
+      purchase_count: buysCount,
+      heat_score: score,
+      chef_name: recipe.sellers ? recipe.sellers.full_name : (recipe.chef_name || 'Chef')
+    };
+  }
+
+  async getTrendingRecipes(limit = 100, category = null) {
+    try {
+      console.log('--- DEBUG: Starting trending aggregation...');
+      
+      // 1. Fetch all necessary data in parallel
+      const [recipes, feedbacks, purchases] = await Promise.all([
+        getAllRecipesModel(),
+        getAllFeedbacksModel(),
+        getAllPurchasesModel()
+      ]).catch(err => {
+        console.error('--- DEBUG: Error in Promise.all during model fetch:', err.message);
+        throw err;
+      });
+
+      console.log(`--- DEBUG: Fetched ${recipes.length} recipes, ${feedbacks.length} feedbacks, ${purchases.length} purchases.`);
+
+      // 2. Group feedbacks and purchases by recipe_id for easy lookup
+      const feedbacksByRecipe = (feedbacks || []).reduce((acc, fb) => {
+        if (fb && fb.recipe_id) {
+          if (!acc[fb.recipe_id]) acc[fb.recipe_id] = [];
+          acc[fb.recipe_id].push(fb.rating);
+        }
+        return acc;
+      }, {});
+
+      const purchasesByRecipe = (purchases || []).reduce((acc, p) => {
+        if (p && p.recipe_id) {
+          if (!acc[p.recipe_id]) acc[p.recipe_id] = [];
+          acc[p.recipe_id].push(p.unlocked_at);
+        }
+        return acc;
+      }, {});
+
+      // 3. Process and aggregate data for each recipe
+      const trendingData = recipes.map(recipe => {
+        const recipeId = recipe.recipe_id;
+        
+        // Calculate Purchase Count
+        const purchaseTimes = purchasesByRecipe[recipeId] || [];
+        const purchaseCount = purchaseTimes.length;
+
+        // Only proceed if purchase_count >= 1 ---
+        if (purchaseCount < 1) return null;
+
+        // Calculate Rating Average
+        const ratings = feedbacksByRecipe[recipeId] || [];
+        const ratingAvg = ratings.length > 0 
+          ? ratings.reduce((sum, r) => sum + r, 0) / ratings.length 
+          : 0;
+
+        // Get Latest Purchase Timestamp for created_at
+        const latestPurchase = new Date(Math.max(...purchaseTimes.map(t => new Date(t))));
+
+        // 4. Calculate Heat Score
+        let heatScore = 0;
+       
+        const scored = this._calculateRecipeScore({
+          ...recipe,
+          average_rating: ratingAvg,
+          rating_count: ratings.length,
+          buys: purchaseCount,
+          created_at: latestPurchase
+        });
+        heatScore = scored ? scored.heat_score : 0;
+
+        return {
+          recipe_id: recipeId,
+          chef_id: recipe.chef_id || null,
+          created_at: latestPurchase,
+          rating_avg: ratingAvg,
+          purchase_count: purchaseCount,
+          heat_score: heatScore
+        };
+      }).filter(item => item !== null); // Remove recipes with 0 purchases
+
+      // 5. Bulk Upsert into trending_recipes table
+      try {
+        const safeNum = (val) => (typeof val === 'number' && !isNaN(val) && isFinite(val)) ? val : 0;
+
+        // Filter to only include columns that exist in the database table
+        const dbPayload = trendingData.map(item => ({
+          recipe_id: item.recipe_id,
+          chef_id: item.chef_id,
+          created_at: item.created_at,
+          rating_avg: safeNum(item.rating_avg),
+          purchase_count: Math.round(safeNum(item.purchase_count)),
+          heat_score: safeNum(item.heat_score)
+        }));
+
+        await bulkUpsertTrendingRecipesModel(dbPayload);
+        console.log(`--- DEBUG: Successfully synced ${dbPayload.length} recipes to trending_recipes table.`);
+      } catch (err) {
+        console.error('--- DEBUG: Sync to trending_recipes table failed:', err.message);
+      }
+
+      // 6. Fetch final sorted data from the table
+      try {
+        console.log('--- DEBUG: Fetching from trending_recipes table...');
+        const tableData = await getTrendingFromTableModel(limit);
+        console.log(`--- DEBUG: Successfully fetched ${tableData.length} rows from trending_recipes table.`);
+        
+        let finalRecipes = tableData.map(row => {
+          const recipe = row.recipes;
+          if (!recipe) {
+            console.warn(`--- DEBUG: No recipe data joined for trending record:`, row.recipe_id);
+            return null;
+          }
+          return {
+            ...recipe,
+            heat_score: row.heat_score || 0,
+            purchase_count: row.purchase_count || 0,
+            average_rating: row.rating_avg || 0, // Map to average_rating for frontend
+            rating_avg: row.rating_avg || 0,
+            created_at: row.created_at,
+            chef_name: recipe.sellers ? recipe.sellers.full_name : (recipe.chef_name || 'Chef')
+          };
+        }).filter(r => r !== null);
+
+        if (category && category.toLowerCase() !== 'all') {
+          finalRecipes = finalRecipes.filter(
+            (r) => 
+              (r.category && r.category.toLowerCase() === category.toLowerCase()) ||
+              (r.difficulty_level && r.difficulty_level.toLowerCase() === category.toLowerCase())
+          );
+        }
+
+        return finalRecipes;
+
+      } catch (err) {
+        console.error('--- DEBUG: Fetch from trending_recipes table failed:', err.message);
+        throw err; // Re-throw to be caught by the outer catch
+      }
+
+    } catch (err) {
+      console.error('--- FATAL ERROR in getTrendingRecipes:', err.message);
+      throw err;
+    }
+  }
+
+  async getRecipesByChef(chefId) {
+    if (!chefId) {
+      throw new Error('Chef ID is required');
+    }
+    return await getRecipesByChefIdModel(chefId);
   }
 
 }

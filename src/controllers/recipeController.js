@@ -117,3 +117,16 @@ export const getTrendingRecipes = async (req, res, next) => {
         next(error);
     }
 };
+
+export const getRecipesByChef = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const recipes = await recipeService.getRecipesByChef(id);
+        res.status(200).json({
+            success: true,
+            data: recipes
+        });
+    } catch (error) {
+        next(error);
+    }
+};
