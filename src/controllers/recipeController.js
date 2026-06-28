@@ -3,6 +3,7 @@ import { supabase } from '../config/supabase.js';
 
 import recipeService from "../services/recipeService.js";
 import { checkPurchaseStatusModel } from '../models/recipesModel.js';
+import { logActivity } from '../utils/activityLogger.js';
 
 /**
  * Standardizes API responses across the recipe controller.
@@ -222,8 +223,47 @@ export const getRecipeById = async (req, res, next) => {
     }
 };
 
-
 export const verifyRecipe = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { approval_status, rejection_reason } = req.body;
+
+    // 1. Update the recipe status using your service
+    const updatedRecipe = await recipeService.verifyRecipe(id, { 
+      approval_status: approval_status, 
+      rejection_reason: rejection_reason 
+    });
+    console.log("DEBUG: Status is:", approval_status);
+
+    // 2. Log the activity (ONLY if approved)
+    if (approval_status === 'published') {
+        console.log("DEBUG: Entering logActivity..."); // ADD THIS
+      await logActivity(
+        "Recipe Published", 
+        `Recipe ID #${id} was published and is now live.`, 
+        "PUBLICATION"
+      );
+    } else if (approval_status === 'rejected') {
+      await logActivity(
+        "Recipe Rejected", 
+        `Recipe ID #${id} was rejected. Reason: ${rejection_reason}`, 
+        "REJECTION"
+      );
+    }
+    
+    return sendResponse(
+      res, 
+      200, 
+      true, 
+      `Recipe has been ${approval_status}`, 
+      updatedRecipe
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+/*export const verifyRecipe = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { approval_status, rejection_reason } = req.body;
@@ -240,7 +280,7 @@ export const verifyRecipe = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+};*/
 
 // UPDATE 
 
