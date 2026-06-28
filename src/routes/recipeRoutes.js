@@ -1,3 +1,5 @@
+//src/routes/recipeRoute.js
+
 import express from 'express';
 import { 
     getAllRecipes,
@@ -7,7 +9,10 @@ import {
     deleteRecipe,
     getFilteredRecipes,
     searchRecipes,
-    unlockRecipe
+    unlockRecipe,
+    verifyRecipe,
+    getCheckoutQuote,
+    unlockRecipesBatch
 } from '../controllers/recipeController.js';
 
 import { requireSession, optionalSession } from '../middleware/sessionmiddleware.js';
@@ -20,7 +25,7 @@ const router = express.Router();
 router.post('/', validateRecipe, addRecipe);
 
 // READ
-router.get('/:id', getRecipeById);
+
 
 // UPDATE
 router.put('/:id', updateRecipe);
@@ -34,6 +39,9 @@ router.get('/search', optionalSession, searchRecipes);
 
 // Filter (Use optionalSession)
 router.get("/filter", optionalSession, getFilteredRecipes);
+
+router.post('/checkout-quote', optionalSession, getCheckoutQuote);
+router.post('/unlock-batch', requireSession, unlockRecipesBatch); 
 
 // Unlock Recipe (A Session is strictly required for payments)
 router.post('/unlock', requireSession, unlockRecipe);
