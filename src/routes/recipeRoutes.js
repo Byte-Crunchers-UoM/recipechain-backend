@@ -7,14 +7,26 @@ import {
     deleteRecipe,
     getFilteredRecipes,
     searchRecipes,
-    unlockRecipe,
-    verifyRecipe
+    unlockRecipe
 } from '../controllers/recipeController.js';
 
 import { requireSession, optionalSession } from '../middleware/sessionmiddleware.js';
 
+import { validateRecipe } from '../middleware/inputValidators.js';
+
 const router = express.Router();
 
+// CREATE 
+router.post('/', validateRecipe, addRecipe);
+
+// READ
+router.get('/:id', getRecipeById);
+
+// UPDATE
+router.put('/:id', updateRecipe);
+
+// DELETE
+router.delete('/:id', deleteRecipe);
 // --- 1. STATIC ROUTES (These should be first) ---
 
 // Search (Use optionalSession so the Purchased badge is visible in the search as well)
@@ -38,7 +50,7 @@ router.get('/:id', optionalSession, getRecipeById);
 router.get("/", optionalSession, getAllRecipes);
 
 
-// --- 3. WRITE / PROTECTED ROUTES ---
+/* --- 3. WRITE / PROTECTED ROUTES ---
 
 // CREATE
 router.post('/', requireSession, addRecipe);
@@ -49,6 +61,6 @@ router.put('/:id', requireSession, updateRecipe);
 // DELETE
 router.delete('/:id', requireSession, deleteRecipe);
 
-router.patch('/:id/verify', verifyRecipe);
+router.patch('/:id/verify', verifyRecipe);*/
 
 export default router;

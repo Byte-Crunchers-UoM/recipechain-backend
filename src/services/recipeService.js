@@ -1,5 +1,4 @@
-// src/services/recipeService.js
-
+import { supabase } from "../config/supabase.js";
 import {
   addRecipeModel,
   getRecipeByIdModel,
@@ -54,20 +53,27 @@ class RecipeService {
   }
 
   async addRecipe(recipeData) {
-    return await addRecipeModel(recipeData);
+    const finalRecipeData = {
+      ...recipeData,
+      status: recipeData.status || "draft",
+      approval_status: recipeData.approval_status || "pending"
+    };
+    
+    return await addRecipeModel(finalRecipeData);
   }
 
   async getRecipeById(id) {
     return await getRecipeByIdModel(id);
   }
 
-  async updateRecipe(id, updateData) {
-    return await updateRecipeModel(id, updateData);
+  async updateRecipe(id, recipeData) {
+    return await updateRecipeModel(id, recipeData);
   }
 
   async deleteRecipe(id) {
     return await deleteRecipeModel(id);
   }
+
 
   _getTransactionResult(txResponse) {
     const meta = txResponse?.result?.meta || txResponse?.result?.metaData;

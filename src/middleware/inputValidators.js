@@ -9,47 +9,123 @@ const userSchema = Joi.object({
   email: Joi.string().email().max(100).required(),
 });
 
-/**
- * Validates user request body before user-related controller logic runs.
- *
- * @param {import("express").Request} req - Express request containing user data in req.body.
- * @param {import("express").Response} res - Express response used to return validation errors.
- * @param {import("express").NextFunction} next - Express next middleware function.
- * @returns {void}
- */
+const recipeSchema = Joi.object({
+    title: Joi.string().min(3).max(200).required(),
+    
+    description: Joi.string().min(3).max(2000).when('approval_status', {
+        is: 'draft',
+        then: Joi.optional().allow('', null),
+        otherwise: Joi.required()
+    }),
+    
+    price: Joi.number().positive().when('approval_status', {
+        is: 'draft',
+        then: Joi.optional().allow('', null, 0),
+        otherwise: Joi.required()
+    }),
+
+    prep_time: Joi.number().integer().min(0).when('approval_status', {
+        is: 'draft',
+        then: Joi.optional().allow('', null, 0),
+        otherwise: Joi.required()
+    }),
+    
+    cook_time: Joi.number().integer().min(0).when('approval_status', {
+        is: 'draft',
+        then: Joi.optional().allow('', null, 0),
+        otherwise: Joi.required()
+    }),
+    
+    servings: Joi.number().integer().min(1).when('approval_status', {
+        is: 'draft',
+        then: Joi.optional().allow('', null, 0),
+        otherwise: Joi.required()
+    }),
+    
+    ingredients: Joi.array().items(
+        Joi.object({
+            id: Joi.string(),
+            name: Joi.string().optional().allow('', null),
+            quantity: Joi.string().optional().allow('', null),
+            unit: Joi.string().optional().allow('', null)
+        })
+    ).when('approval_status', {
+        is: 'draft',
+        then: Joi.optional().allow(null),
+        otherwise: Joi.required()
+    }),
+    
+    instructions: Joi.array().items(Joi.string().min(1)).when('approval_status', {
+        is: 'draft',
+        then: Joi.optional().allow(null),
+        otherwise: Joi.required()
+    }),
+    
+    image_url: Joi.string().uri().optional().allow('', null),
+    difficulty_level: Joi.string().optional().allow('', null, 'easy', 'medium', 'hard'),
+    rating_avg: Joi.number().min(0).max(5).optional().allow(null),
+    chef_note: Joi.string().max(1000).optional().allow('', null),
+    approval_status: Joi.string().valid('draft', 'published', 'pending', 'rejected').required(),
+    chef_id: Joi.string().optional(),
+    
+    cuisine: Joi.string().optional().allow('', null),
+    meal_type: Joi.string().optional().allow('', null),
+    goal: Joi.string().optional().allow('', null),
+    occasion: Joi.string().optional().allow('', null),
+    dietary_tags: Joi.alternatives().try(
+        Joi.array().items(Joi.string()),
+        Joi.string().allow('', null),
+        Joi.any().allow(null)
+    ).optional(),
+
+    tags: Joi.object({
+        dietary_tags: Joi.array().items(Joi.string()).optional().allow(null),
+        goal: Joi.string().optional().allow('', null),
+        meal_type: Joi.string().optional().allow('', null),
+        occasion: Joi.string().optional().allow('', null),
+        cuisine: Joi.string().optional().allow('', null)
+    }).optional().allow(null)
+}).unknown(true); 
+
 const validateUser = (req, res, next) => {
-  console.log("Validator - req.body:", req.body);
+    if (!req.body || Object.keys(req.body).length === 0) {
+        return res.status(400).json({
+            success: false,
+            message: 'Request body is required'
+        });
+    }
+    const { error } = userSchema.validate(req.body);
+    if (error) {
+        return res.status(400).json({
+            success: false,
+            message: error.details[0].message
+        });
+    }
+    next();
+}; 
 
-  /**
-   * Empty request bodies should fail early because Joi validation messages
-   * are clearer when the body is known to exist.
-   */
-  if (!req.body || Object.keys(req.body).length === 0) {
-    return res.status(400).json({
-      success: false,
-      message: "Request body is required",
-      error: ["Request body cannot be empty"],
-    });
-  }
+const validateRecipe = (req, res, next) => {
+    if (req.body.approval_status) {
+        req.body.approval_status = req.body.approval_status.toString().trim().toLowerCase();
+    } else {
+        req.body.approval_status = 'pending'; 
+    }
 
-  const { error } = userSchema.validate(req.body);
+    const { error } = recipeSchema.validate(req.body, { abortEarly: false });
 
-  if (error) {
-    /**
-     * Return all Joi validation messages so the frontend can show
-     * complete feedback instead of fixing one field at a time.
-     */
-    return res.status(400).json({
-      success: false,
-      message: error.details[0].message,
-      error: error.details.map((detail) => detail.message),
-    });
-  }
+    if (error) {
+        const errorMessages = error.details.map(detail => detail.message);
+        const isStatusError = error.details.some(d => d.context.key === 'approval_status');
 
-  /**
-   * If validation passes, continue to the next middleware/controller.
-   */
-  next();
+        return res.status(400).json({
+            success: false,
+            message: isStatusError ? "Status is required or invalid" : error.details[0].message,
+            errors: errorMessages,
+            missingFields: error.details.map(d => d.context.key) 
+        });
+    }
+
+    next();
 };
 
-export default validateUser;
+export { validateUser, validateRecipe };
