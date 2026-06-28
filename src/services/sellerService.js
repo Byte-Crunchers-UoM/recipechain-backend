@@ -4,6 +4,14 @@ import { uploadBufferToCloudinary } from "../utils/uploadToCloudinary.js";
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 const ALLOWED_FILE_TYPES = ["image/jpeg", "image/png", "application/pdf"];
 
+/**
+ * Ensures a seller row exists for the selected seller user.
+ * This is used when a user chooses the seller role.
+ *
+ * @param {object} params - Seller role selection params.
+ * @param {string} params.userId - Logged-in user's ID.
+ * @returns {Promise<object>} Existing or newly created seller row.
+ */
 const selectSellerRole = async ({ userId }) => {
   const existingSeller = await sellerModel.findSellerByUserId(userId);
 
@@ -16,14 +24,26 @@ const selectSellerRole = async ({ userId }) => {
   });
 };
 
+/**
+ * Normalizes NIC/passport values before duplicate checking.
+ * This prevents the same ID being treated as different because of spaces or symbols.
+ */
 const normalizeNic = (value = "") => {
   return value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
 };
 
+/**
+ * Normalizes phone numbers before duplicate checking.
+ * This prevents duplicates caused by spaces, brackets, or hyphens.
+ */
 const normalizePhone = (value = "") => {
   return value.replace(/[^\d+]/g, "").trim();
 };
 
+/**
+ * Validates uploaded KYC document before sending it to Cloudinary.
+ * Backend validation is required because frontend validation can be bypassed.
+ */
 const validateDocumentFile = (file, label) => {
   if (!file) {
     throw new Error(`${label} is required`);
@@ -38,6 +58,16 @@ const validateDocumentFile = (file, label) => {
   }
 };
 
+/**
+ * Uploads one KYC document to Cloudinary and returns metadata for database storage.
+ *
+ * @param {object} params - Upload params.
+ * @param {object} params.file - Multer file object.
+ * @param {string} params.userId - Seller user ID.
+ * @param {string} params.cleanedFullName - Seller full name used for readable asset naming.
+ * @param {"front" | "back"} params.side - ID document side.
+ * @returns {Promise<object>} Cloudinary URL/public ID/resource metadata.
+ */
 const uploadKycDocument = async ({
   file,
   userId,
@@ -46,6 +76,9 @@ const uploadKycDocument = async ({
 }) => {
   const resourceType = file.mimetype === "application/pdf" ? "raw" : "image";
 
+  /**
+   * Safe public IDs avoid spaces and special characters in Cloudinary asset names.
+   */
   const safeBaseName = cleanedFullName
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -75,6 +108,10 @@ const uploadKycDocument = async ({
   };
 };
 
+/**
+ * Builds a structured duplicate identity error for NIC/phone conflicts.
+ * The frontend uses these fields to show a clear user-friendly warning.
+ */
 const buildDuplicateIdentityError = ({ field, status }) => {
   const safeStatus = status || "pending";
 
@@ -107,6 +144,15 @@ const buildDuplicateIdentityError = ({ field, status }) => {
   return error;
 };
 
+/**
+ * Submits or resubmits seller KYC details.
+ *
+ * @param {object} params - KYC submission params.
+ * @param {string} params.userId - Logged-in seller user ID.
+ * @param {object} params.body - KYC form text fields.
+ * @param {object} params.files - Uploaded front/back ID documents from Multer.
+ * @returns {Promise<object>} Updated seller row.
+ */
 const submitKyc = async ({ userId, body, files }) => {
   const {
     fullName,
@@ -125,6 +171,10 @@ const submitKyc = async ({ userId, body, files }) => {
   const cleanedPhoneNo = phoneNo?.trim();
   const cleanedNicNo = nicNo?.trim();
 
+  /**
+   * Required text fields are checked here before file upload to avoid
+   * unnecessary Cloudinary uploads for incomplete submissions.
+   */
   if (
     !cleanedFullName ||
     !dateOfBirth ||
@@ -136,6 +186,9 @@ const submitKyc = async ({ userId, body, files }) => {
     throw new Error("All required fields must be filled");
   }
 
+  /**
+   * Legal declarations must be explicitly accepted before sending KYC for review.
+   */
   if (confirmAccuracy !== "true" || agreeTerms !== "true") {
     throw new Error("You must agree to the declarations");
   }
@@ -152,12 +205,18 @@ const submitKyc = async ({ userId, body, files }) => {
     throw new Error("Seller record not found. Please select seller role first.");
   }
 
+  /**
+   * Pending submissions should not be overwritten while admin review is active.
+   */
   if (seller.verification_status === "pending") {
     throw new Error(
       "Your KYC verification is already under review. Please wait for the review to complete before resubmitting."
     );
   }
 
+  /**
+   * Approved sellers do not need to submit KYC again.
+   */
   if (seller.verification_status === "approved") {
     throw new Error(
       "Your KYC has already been approved. No further submissions are required."
@@ -167,7 +226,15 @@ const submitKyc = async ({ userId, body, files }) => {
   const normalizedNic = normalizeNic(cleanedNicNo);
   const normalizedPhone = normalizePhone(cleanedPhoneNo);
 
-  const nicOwner = await sellerModel.findSellerByNicNormalized(normalizedNic, userId);
+  /**
+   * Duplicate checks enforce the one-seller-account-per-person rule.
+   * Current user is excluded so rejected sellers can resubmit their own record.
+   */
+  const nicOwner = await sellerModel.findSellerByNicNormalized(
+    normalizedNic,
+    userId
+  );
+
   if (nicOwner) {
     throw buildDuplicateIdentityError({
       field: "nicNo",
@@ -179,6 +246,7 @@ const submitKyc = async ({ userId, body, files }) => {
     normalizedPhone,
     userId
   );
+
   if (phoneOwner) {
     throw buildDuplicateIdentityError({
       field: "phoneNo",
@@ -186,6 +254,9 @@ const submitKyc = async ({ userId, body, files }) => {
     });
   }
 
+  /**
+   * Upload both document sides only after all validation and duplicate checks pass.
+   */
   const frontUpload = await uploadKycDocument({
     file: frontFile,
     userId,
@@ -200,6 +271,10 @@ const submitKyc = async ({ userId, body, files }) => {
     side: "back",
   });
 
+  /**
+   * After successful upload, seller status becomes pending for admin review.
+   * Previous rejection reason is cleared because this is a fresh submission.
+   */
   const updatedSeller = await sellerModel.updateSellerByUserId(userId, {
     full_name: cleanedFullName,
     display_name: cleanedFullName,
@@ -221,6 +296,9 @@ const submitKyc = async ({ userId, body, files }) => {
     id_document_back_resource_type: backUpload.resourceType,
     id_document_back_original_name: backUpload.originalName,
 
+    /**
+     * Legacy single-document fields are kept for compatibility with older code.
+     */
     cloudinary_public_id: frontUpload.publicId,
     id_document_resource_type: frontUpload.resourceType,
     id_document_original_name: frontUpload.originalName,
@@ -235,6 +313,9 @@ const submitKyc = async ({ userId, body, files }) => {
   return updatedSeller;
 };
 
+/**
+ * Returns seller KYC status and submitted details for the logged-in seller.
+ */
 const getKycStatus = async (userId) => {
   const seller = await sellerModel.findSellerByUserId(userId);
 
@@ -245,6 +326,10 @@ const getKycStatus = async (userId) => {
   return await sellerModel.getKycStatusByUserId(userId);
 };
 
+/**
+ * Marks the approval success page as seen.
+ * Only approved sellers can do this so pending/rejected users cannot skip review.
+ */
 const markKycApprovalPageSeen = async (userId) => {
   const seller = await sellerModel.findSellerByUserId(userId);
 

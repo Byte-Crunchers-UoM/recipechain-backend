@@ -1,5 +1,13 @@
-import recipeService from "../services/recipeService.js";
+//src/recipeController.js
+import { supabase } from '../config/supabase.js'; 
 
+import recipeService from "../services/recipeService.js";
+import { checkPurchaseStatusModel } from '../models/recipesModel.js';
+
+/**
+ * Standardizes API responses across the recipe controller.
+ * Ensures the frontend always receives data in a predictable format.
+ */
 const sendResponse = (res, statusCode, success, message, data = null) => {
     res.status(statusCode).json({
         success,
@@ -27,18 +35,57 @@ export const getFilteredRecipes = async (req, res, next) => {
     }
 };
 
-export const getAllRecipes = async (req, res, next) => {
+/**
+ * Searches for recipes by keyword query keyword.
+ * Provides a fast text-based search feature for the marketplace.
+ */
+export const searchRecipes = async (req, res, next) => {
     try {
-        const recipes = await recipeService.getAllRecipes();
+        const searchTerm = req.query.q;
+        const userId = req.user?.user_id || req.user?.id;
+        
+        if (!searchTerm) {
+            return res.status(200).json({ success: true, count: 0, data: [] });
+        }
+
+        const data = await recipeService.searchRecipes(searchTerm, userId);
+        
+        res.status(200).json({
+            success: true,
+            count: data.length,
+            data: data
+        });
+    } catch (error) {
+        next(error); 
+    }
+};
+
+/**
+ * Fetches all available published recipes on the platform.
+ * Typically used for the homepage or main marketplace feed.
+ */
+export const getAllRecipes = async(req, res, next) => {
+    try {
+        // Get the User ID from optionalSession (undefined if not logged in)
+        const userId = req.user?.user_id || req.user?.id; 
+
+        // Pass that ID to the Service
+        const recipes = await recipeService.getAllRecipes(userId);
+
         return sendResponse(res, 200, true, 'recipes retrieved successfully', recipes);
-    } catch (err) {
+    } catch(err) {
         next(err);
     }
 };
 
-export const addRecipe = async (req, res, next) => {
-    try {
-        const {
+/**
+ * Handles the creation of a new recipe by a seller.
+ * Captures all culinary details and stores them in the database
+ * so they can be monetized.
+ */
+export const addRecipe = async (req, res, next ) => {
+    try{
+        const{
             title,
             description,
             image_url,
@@ -91,16 +138,73 @@ export const addRecipe = async (req, res, next) => {
             message: finalApprovalStatus === 'draft' ? 'Recipe saved as draft successfully' : 'Recipe submitted for approval successfully',
             recipe: result.recipe,
             tag: result.tag || null
-        });
-    } catch (error) {
+        }); // <-- ADDED MISSING BRACE HERE
+    } catch (error){
         next(error);
-    }
+    } // <-- ADDED MISSING BRACE HERE
 };
 
+/**
+ * Fetches details of a specific recipe.
+ * Acts as a premium gatekeeper: strips out sensitive instructions/ingredients
+ * if the requesting user hasn't purchased the recipe.
+ */
 export const getRecipeById = async (req, res, next) => {
     try {
-        const recipe = await recipeService.getRecipeById(req.params.id);
-        res.status(200).json({ success: true, recipe });
+        const recipeId = req.params.id;
+        
+        console.log("---- DEBUG GET RECIPE ----");
+        console.log("req.user Object from Middleware:", req.user); 
+
+        const recipe = await recipeService.getRecipeById(recipeId);
+
+        if (!recipe) {
+            return res.status(404).json({ success: false, message: 'Recipe not found' });
+        }
+
+        let hasAccess = false;
+
+        console.log("---- CHECKING RECIPE ACCESS ----");
+        console.log("Is User Logged In?:", req.user ? "YES" : "NO");
+
+        const userId = req.user?.user_id || req.user?.id; 
+
+        if (userId) {
+            // 1. Check if this is the creator
+            const isSeller = recipe.chef_id === userId || recipe.sellers?.user_id === userId; 
+            
+            // 2. Check if this is a buyer (from the Model)
+            const hasPurchased = await checkPurchaseStatusModel(userId, recipeId);
+
+            // 3. Check if this is an Admin reviewing the recipe
+            const { data: profileData } = await supabase
+                .from("users")
+                .select("role")
+                .eq("user_id", userId)
+                .single();
+            const isAdmin = profileData?.role === "admin";
+
+            // If they are the creator, a buyer, OR an admin, unlock it!
+            if (isSeller || hasPurchased || isAdmin) {
+                hasAccess = true;
+            }
+        }
+
+        if (!hasAccess) {
+            console.log("🔴 Access Denied: Sending Locked Version");
+            delete recipe.ingredients;   
+            delete recipe.instructions;  
+            delete recipe.chef_note;     
+            recipe.is_premium_locked = true; 
+        } else {
+            console.log("🟢 Access Granted: Sending Full Recipe");
+            recipe.is_premium_locked = false; 
+        }
+
+        res.status(200).json({
+            success: true,
+            recipe
+        });
     } catch (error) {
         next(error);
     }
@@ -167,5 +271,38 @@ export const deleteRecipe = async (req, res, next) => {
         });
     } catch (error) {
         next(error);
+    }
+};
+
+/**
+ * Facilitates the purchase/unlocking process of a premium recipe.
+ * Expects a completed XRPL transaction hash, verifies it, and grants
+ * access if the payment is valid.
+ */
+export const unlockRecipe = async (req, res, next) => {
+    try {
+        const { recipeId, transactionHash } = req.body;
+        const buyerId = req.user.user_id;
+
+        if (!recipeId || !transactionHash) {
+            return res.status(400).json({ success: false, message: 'recipeId and transactionHash are required' });
+        }
+
+        console.log("---- UNLOCK RECIPE API CALLED ----");
+        
+        // Hand over all the heavy lifting to the Service!
+        await recipeService.processRecipeUnlock(buyerId, recipeId, transactionHash);
+
+        return res.status(200).json({ 
+            success: true, 
+            message: 'Recipe unlocked and payment recorded successfully!' 
+        });
+
+    } catch (err) {
+        // Catch the Errors sent by the Service and send them properly to the Frontend
+        if (err.message.includes('Insufficient') || err.message.includes('incorrect') || err.message.includes('successful')) {
+            return res.status(400).json({ success: false, message: err.message });
+        }
+        next(err);
     }
 };

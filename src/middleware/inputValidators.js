@@ -1,8 +1,12 @@
-import Joi from 'joi';
+import Joi from "joi";
 
+/**
+ * Defines the expected shape of user request data.
+ * Joi is used here so invalid user input is blocked before reaching the controller/service layer.
+ */
 const userSchema = Joi.object({
-    username: Joi.string().min(3).max(50).required(),
-    email: Joi.string().email().max(100).required()
+  username: Joi.string().min(3).max(50).required(),
+  email: Joi.string().email().max(100).required(),
 });
 
 const recipeSchema = Joi.object({

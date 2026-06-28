@@ -7,6 +7,8 @@ import {
   deleteUser,
   setUserRole,
   getMe,
+  requestMyAccountDeletion,
+  deleteMyAccountPermanently,
 } from "../controllers/userController.js";
 
 import { validateUser } from "../middleware/inputValidators.js";
@@ -27,5 +29,7 @@ router.delete("/user/:id", protectAdmin, deleteUser);
 // Session-cookie based routes
 router.get("/me", requireSession, getMe);
 router.post("/users/role", requireSession, setUserRole);
+router.post("/users/me/delete-request", requireSession, requestMyAccountDeletion);
+router.delete("/users/me", requireSession, deleteMyAccountPermanently);
 
 export default router;
