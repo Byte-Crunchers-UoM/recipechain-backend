@@ -87,6 +87,10 @@ class RecipeService {
     return await verifyRecipeModel(id, { approval_status, rejection_reason });
   }
 
+  async verifyRecipe(id, { approval_status, rejection_reason }) {
+    return await verifyRecipeModel(id, { approval_status, rejection_reason });
+  }
+
   // ==========================================
   // DEV BRANCH: SINGLE RECIPE CHECKOUT HELPERS
   // ==========================================

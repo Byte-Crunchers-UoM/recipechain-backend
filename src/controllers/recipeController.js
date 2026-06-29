@@ -3,6 +3,7 @@ import { supabase } from '../config/supabase.js';
 import { getPaginationOptions, getPaginationMeta } from '../utils/paginations.js';
 import recipeService from "../services/recipeService.js";
 import { checkPurchaseStatusModel } from '../models/recipesModel.js';
+import { logActivity } from '../utils/activityLogger.js';
 
 /**
  * Standardizes API responses across the recipe controller.
@@ -244,7 +245,6 @@ export const getRecipeById = async (req, res, next) => {
     }
 };
 
-
 export const verifyRecipe = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -272,6 +272,25 @@ export const verifyRecipe = async (req, res, next) => {
         "REJECTION"
       );
     }
+    
+    return sendResponse(
+      res, 
+      200, 
+      true, 
+      `Recipe has been ${approval_status}`, 
+      updatedRecipe
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+/*export const verifyRecipe = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { approval_status, rejection_reason } = req.body;
+
+    const updatedRecipe = await recipeService.verifyRecipe(id, { approval_status: approval_status, rejection_reason: rejection_reason });
     
     return sendResponse(
       res, 

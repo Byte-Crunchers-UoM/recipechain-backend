@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { supabase } from "../config/supabase.js";
 import buyerService from "../services/buyerService.js";
 import cookbookService from "../services/cookbookService.js";
+import { logActivity } from '../utils/activityLogger.js';
 
 /**
  * Creates a test buyer record directly in users and buyers tables.
@@ -514,4 +515,34 @@ export const toggleMyCookbookFavorite = async (req, res) => {
       message: error.message || "Failed to update favorite",
     });
   }
+};
+
+export const blockBuyer = async (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    try {
+        const { error } = await supabase
+            .from("buyers")
+            .update({ status })
+            .eq("user_id", id);
+
+        if (error) throw error;
+
+        await logActivity(
+            status === "blocked" ? "Buyer Blocked" : "Buyer Unblocked",
+            `Buyer ID #${id} status changed to ${status}.`,
+            "USER_BLOCK"
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: `Buyer ${status} successfully`
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
 };

@@ -18,6 +18,10 @@ import authRoutes from "./routes/authRoutes.js";
 import walletRoutes from "./routes/walletRoutes.js";
 import stripeRoutes from "./routes/stripeRoutes.js";
 import aiRoutes from './routes/aiRoutes.js';
+import adminReviewRoutes from "./routes/adminReviewRoutes.js";
+import { protectAdmin } from "./middleware/authMiddleware.js";
+
+
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -78,6 +82,9 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use("/api/savedrecipes", savedRecipeRoutes);
 app.use("/api/wallet", walletRoutes);
 app.use('/api/ai', aiRoutes);
+app.use("/api/admin/reviews", protectAdmin, adminReviewRoutes);
+
+
 // Error handler
 app.use(errorHandler);
 
