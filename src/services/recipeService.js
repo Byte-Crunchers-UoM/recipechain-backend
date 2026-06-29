@@ -15,7 +15,8 @@ import {
   getRecipesByIdsModel,
   getPurchasedRecipeIdsModel,
   getExistingPaymentByHashModel,
-  savePaymentItemsModel
+  savePaymentItemsModel,
+  verifyRecipeModel
 } from "../models/recipesModel.js";
 import xrpl from "xrpl";
 import xrplService from "./xrplService.js";
@@ -80,6 +81,10 @@ class RecipeService {
 
   async deleteRecipe(id) {
     return await deleteRecipeModel(id);
+  }
+
+  async verifyRecipe(id, { approval_status, rejection_reason }) {
+    return await verifyRecipeModel(id, { approval_status, rejection_reason });
   }
 
   // ==========================================
