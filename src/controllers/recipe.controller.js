@@ -1,9 +1,8 @@
-import { Request, Response, NextFunction } from 'express';
-import recipeService from '../services/recipeService'; 
+import recipeService from '../services/recipeService.js'; 
 
-export const addRecipe = async (req: Request, res: Response, next: NextFunction) => {
+export const addRecipe = async (req, res, next) => {
     try {
-        const missingFields: string[] = [];
+        const missingFields = [];
         const allowedStatuses = ["pending", "published", "rejected", "draft"];
 
         // 1. Approval Status validation logic
@@ -28,14 +27,14 @@ export const addRecipe = async (req: Request, res: Response, next: NextFunction)
             });
         }
 
-        const imageUrl = req.body.image_url || (req.file ? (req.file as any).path : null);
+        const imageUrl = req.body.image_url || (req.file ? req.file.path : null);
 
         const { tags, category, ...otherData } = req.body;
         // 2. recipeData object
         const recipeData = {
             ...otherData, 
             image_url: imageUrl,
-            chef_id: chef_id || (req as any).user?.id, 
+            chef_id: chef_id || req.user?.id, 
             approval_status: req.body.approval_status, 
             status: req.body.status,
             tags                   
