@@ -12,7 +12,8 @@ import {
     unlockRecipe,
     verifyRecipe,
     getCheckoutQuote,
-    unlockRecipesBatch
+    unlockRecipesBatch,
+    getAdminAllRecipes
 } from '../controllers/recipeController.js';
 
 import { requireSession, optionalSession } from '../middleware/sessionmiddleware.js';
@@ -47,28 +48,19 @@ router.post('/unlock-batch', requireSession, unlockRecipesBatch);
 router.post('/unlock', requireSession, unlockRecipe);
 
 
-// --- 2. DYNAMIC ROUTES (Routes using an ID should come after) ---
+// --- 2. DYNAMIC ROUTES (Routes using an ID should come after static ones) ---
+
+// Admin: must be before /:id so "admin" is not treated as a recipe ID
+router.get('/admin/all', getAdminAllRecipes);
+
+// Approve / Reject a recipe (admin action)
+router.patch('/:id/verify', verifyRecipe);
 
 // READ BY ID
 // Since optionalSession is here, it will unlock the recipe for logged-in users
 router.get('/:id', optionalSession, getRecipeById);
 
 // GET ALL RECIPES
-// Put this at the very bottom, so it works if the others don't match
 router.get("/", optionalSession, getAllRecipes);
-
-
-/* --- 3. WRITE / PROTECTED ROUTES ---
-
-// CREATE
-router.post('/', requireSession, addRecipe);
-
-// UPDATE
-router.put('/:id', requireSession, updateRecipe);
-
-// DELETE
-router.delete('/:id', requireSession, deleteRecipe);
-
-router.patch('/:id/verify', verifyRecipe);*/
 
 export default router;

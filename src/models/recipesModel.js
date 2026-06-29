@@ -86,14 +86,55 @@ export const searchRecipesModel = async (searchTerm) => {
  * Database Model: Inserts a newly created recipe into the database.
  */
 export const addRecipeModel = async (recipeData) =>{
-    const {data,error} = await supabase
-    .from("recipes")
-    .insert([recipeData])
-    .select()
-    .single();
+  const { tags, ...restRecipe } = recipeData;
+  let tagRow = null;
 
-  if (error) throw error;
-  return data;
+  try {
+    const hasNonEmptyTag = tags && Object.values(tags).some(v => {
+      if (v === null || v === undefined) return false;
+      if (Array.isArray(v)) return v.length > 0;
+      return String(v).trim() !== '';
+    });
+
+    if (hasNonEmptyTag) {
+      const {
+        dietary_tags = null,
+        goal = null,
+        meal_type = null,
+        occasion = null,
+        cuisine = null
+      } = tags;
+
+      const tagPayload = { dietary_tags, goal, meal_type, occasion, cuisine };
+      const { data: insertedTag, error: tagError } = await supabase
+        .from('tags')
+        .insert([tagPayload])
+        .select()
+        .single();
+
+      if (tagError) throw tagError;
+      tagRow = insertedTag;
+
+      const tagId = tagRow?.id ?? tagRow?.tag_id ?? tagRow?.tags_id;
+      if (tagId) {
+        restRecipe.tag_id = tagId;
+      }
+    }
+
+    restRecipe.ingredients = restRecipe.ingredients || [];
+    restRecipe.instructions = restRecipe.instructions || [];
+
+    const { data: recipe, error: recipeError } = await supabase
+      .from('recipes')
+      .insert([restRecipe])
+      .select()
+      .single();
+
+    if (recipeError) throw recipeError;
+    return { recipe, tag: tagRow };
+  } catch (error) {
+    throw error;
+  }
 };
 
 /**
@@ -254,7 +295,6 @@ export const verifyRecipeModel = async (recipeId, { approval_status, rejection_r
   
   return data;
 };
-
 /**
  * Database Model: Fetches a set of recipes by ID, with seller info,
  * for batch checkout price calculation.

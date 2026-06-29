@@ -17,7 +17,7 @@ import savedRecipeRoutes from "./routes/savedRecipeRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import walletRoutes from "./routes/walletRoutes.js";
 import stripeRoutes from "./routes/stripeRoutes.js";
-
+import aiRoutes from './routes/aiRoutes.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -77,7 +77,7 @@ app.use('/api/sellers', sellerRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use("/api/savedrecipes", savedRecipeRoutes);
 app.use("/api/wallet", walletRoutes);
-
+app.use('/api/ai', aiRoutes);
 // Error handler
 app.use(errorHandler);
 
