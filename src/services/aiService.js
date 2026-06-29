@@ -55,7 +55,6 @@ function normalizeRecipeForAI(recipe, accessStatus) {
     title: cleanText(recipe.title, "Untitled Recipe"),
     description: truncateText(recipe.description, 500),
     access_status: accessStatus,
-    marketplace_path: `/recipes/${recipe.recipe_id}`,
     servings: safeNumber(recipe.servings),
     prep_time_minutes: safeNumber(recipe.prep_time),
     cook_time_minutes: safeNumber(recipe.cook_time),
@@ -101,10 +100,10 @@ function findLockedRecipeMatches(prompt, lockedRecipes) {
     })
     .slice(0, 5)
     .map((recipe) => ({
-      recipe_id: recipe.recipe_id,
       title: recipe.title,
       price_xrp: recipe.price_xrp,
-      marketplace_path: recipe.marketplace_path,
+      difficulty_level: recipe.difficulty_level,
+      rating_avg: recipe.rating_avg,
     }));
 }
 
@@ -225,18 +224,25 @@ Critical monetization/access rules:
 - You receive two recipe lists: unlockedRecipes and lockedMarketplaceRecipes.
 - You may fully use ingredients, instructions, and chef notes ONLY from unlockedRecipes.
 - Never reveal ingredients, instructions, cooking steps, chef notes, or hidden details from lockedMarketplaceRecipes.
-- If the user asks for a locked premium recipe, a meal plan based on it, or details that require that locked recipe, tell them it is premium and suggest unlocking the exact recipe.
-- When suggesting a locked recipe, include its title, XRP price if available, and marketplace path.
+- If the user asks for a locked premium recipe, a meal plan based on it, or details that require that locked recipe, tell them it is premium and suggest unlocking the exact recipe from the marketplace.
+- When suggesting a locked recipe, include only the recipe name, price in XRP if available, difficulty, and rating if available.
+- Do not include recipe IDs.
+- Do not include internal URLs.
+- Do not include paths like /recipes/recipe-id.
+- Do not use markdown bold symbols such as **Recipe Name**.
+- Write recipe names as normal plain text.
 - Do not claim that a recipe is unlocked unless it appears in unlockedRecipes.
 - If a user asks for a shopping list and they have no unlocked recipes, explain that they need to unlock recipes first.
 - If the user asks for general substitutions not tied to a locked recipe, you may answer normally.
 
 Response style:
 - Be concise and helpful.
-- Use clear headings when useful.
+- Use plain text only.
+- Do not use markdown formatting.
+- Do not use ** symbols.
+- Use simple bullet points with hyphens if needed.
 - For scaled quantities, show the scaling ratio.
 - If ingredient quantities are not structured enough to calculate exactly, make a best-effort estimate and say so.
-- Return plain text only. Do not return JSON.
 `.trim();
 }
 
