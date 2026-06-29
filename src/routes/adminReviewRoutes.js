@@ -2,8 +2,7 @@ import express from 'express';
 import {
   getReportedReviews,
   approveReview,
-  removeReview,
-  resolveReview
+  removeReview
 } from '../controllers/adminReviewController.js';
 
 const router = express.Router();
@@ -16,8 +15,5 @@ router.patch('/:id/approve', approveReview);
 
 // PATCH /api/admin/reviews/:id/remove
 router.patch('/:id/remove', removeReview);
-
-// PATCH /api/admin/reviews/:id/resolve
-router.patch('/:id/resolve', resolveReview);
 
 export default router;

@@ -22,7 +22,8 @@ export const getFinanceStats = async (req, res) => {
 
         sellers:seller_id (
           user_id,
-          display_name
+          display_name,
+          profile_photo
         ),
 
         payments!inner (
@@ -58,6 +59,7 @@ export const getFinanceStats = async (req, res) => {
                 if (!sellerSales[tx.seller_id]) {
                     sellerSales[tx.seller_id] = {
                         sellerName: tx.sellers?.display_name || "Unknown Chef",
+                         profilePhoto: tx.sellers?.profile_photo || null,
                         totalSales: 0,
                         earnings: 0,
                     };

@@ -17,20 +17,21 @@ export const getReportedReviews = async (req, res) => {
 
     // Fetch live statistics from the database
     // 1. Total Reported Reviews: reviews that are/were reported (status = 'reported', 'under review', or 'resolved')
-    const { count: totalReported, error: err1 } = await supabase
-      .from("feedbacks")
-      .select("*", { count: "exact", head: true })
-      .in("status", ["reported", "under review", "under_review", "resolved"]);
+    // Total reported reviews
+const { count: totalReported, error: err1 } = await supabase
+  .from("feedbacks")
+  .select("*", { count: "exact", head: true })
+  .eq("status", "reported");
 
-    if (err1) console.error("Error counting total reported reviews:", err1);
+if (err1) console.error(err1);
 
-    // 2. Pending Review: reviews with status 'reported' or 'under review'
-    const { count: pendingReview, error: err2 } = await supabase
-      .from("feedbacks")
-      .select("*", { count: "exact", head: true })
-      .in("status", ["reported", "under review", "under_review"]);
+// Removed reviews
+const { count: removedReviews, error: err2 } = await supabase
+  .from("feedbacks")
+  .select("*", { count: "exact", head: true })
+  .eq("status", "removed");
 
-    if (err2) console.error("Error counting pending reviews:", err2);
+if (err2) console.error(err2);
 
     // 3. Resolved Reviews: reviews with status 'resolved'
     const { count: resolvedReviews, error: err3 } = await supabase
@@ -41,16 +42,15 @@ export const getReportedReviews = async (req, res) => {
     if (err3) console.error("Error counting resolved reviews:", err3);
 
     return res.status(200).json({
-      success: true,
-      data: {
-        reviews: reviews || [],
-        stats: {
-          totalReported: totalReported || 0,
-          pendingReview: pendingReview || 0,
-          resolvedReviews: resolvedReviews || 0
-        }
-      }
-    });
+  success: true,
+  data: {
+    reviews: reviews || [],
+    stats: {
+      totalReported: totalReported || 0,
+      removedReviews: removedReviews || 0,
+    }
+  }
+});
   } catch (error) {
     console.error("Failed to load reported reviews:", error);
     return res.status(500).json({
@@ -70,13 +70,17 @@ export const approveReview = async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("feedbacks")
-      .update({ status: "approved" })
+      .update({ status: "not reported" })
       .eq("feedback_id", id)
       .select();
 
     if (error) throw error;
 
-    await logActivity("Review Approved", `Review ${id} has been approved.`, "APPROVAL");
+    await logActivity(
+  "Review Approved",
+  `Review ${id} report was dismissed by admin.`,
+  "REVIEW_MODERATION"
+);
 
     return res.status(200).json({
       success: true,
@@ -129,30 +133,4 @@ export const removeReview = async (req, res) => {
  * PATCH /api/admin/reviews/:id/resolve
  * Update status to 'resolved' and log activity
  */
-export const resolveReview = async (req, res) => {
-  const { id } = req.params;
-  try {
-    const { data, error } = await supabase
-      .from("feedbacks")
-      .update({ status: "resolved" })
-      .eq("feedback_id", id)
-      .select();
 
-    if (error) throw error;
-
-    await logActivity("Review Resolved", `Review ${id} was marked as resolved.`, "REVIEW_MODERATION");
-
-    return res.status(200).json({
-      success: true,
-      message: "Review resolved successfully",
-      data: data?.[0] || null
-    });
-  } catch (error) {
-    console.error("Resolve Review Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to resolve review",
-      errorDetails: error.message
-    });
-  }
-};
