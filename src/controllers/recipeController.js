@@ -1,8 +1,9 @@
 //src/recipeController.js
 import { supabase } from '../config/supabase.js'; 
-
+import { getPaginationOptions, getPaginationMeta } from '../utils/paginations.js';
 import recipeService from "../services/recipeService.js";
 import { checkPurchaseStatusModel } from '../models/recipesModel.js';
+import { logActivity } from '../utils/activityLogger.js';
 
 /**
  * Standardizes API responses across the recipe controller.
@@ -74,20 +75,34 @@ export const searchRecipes = async (req, res, next) => {
  * Fetches all available published recipes on the platform.
  * Typically used for the homepage or main marketplace feed.
  */
-export const getAllRecipes = async(req, res, next) => {
+/**
+ * Fetches all available published recipes on the platform with pagination.
+ */
+
+export const getAllRecipes = async (req, res, next) => {
     try {
-        // Get the User ID from optionalSession (undefined if not logged in)
         const userId = req.user?.user_id || req.user?.id; 
+        
+        // 1. Get safe, sanitized pagination options (Max 50 items per page)
+        const { page, limit, from, to } = getPaginationOptions(req.query.page, req.query.limit, 10, 50);
 
-        // Pass that ID to the Service
-        const recipes = await recipeService.getAllRecipes(userId);
+        // 2. Pass the strict range down to the service
+        const { recipes, totalCount } = await recipeService.getAllRecipes(userId, from, to);
 
-        return sendResponse(res, 200, true, 'recipes retrieved successfully', recipes);
+        // 3. Generate standard metadata
+        const paginationMeta = getPaginationMeta(totalCount, page, limit);
+
+        // 4. Standardized JSON response
+        return res.status(200).json({
+            success: true,
+            message: 'Recipes retrieved successfully',
+            data: recipes,
+            meta: paginationMeta // Industry standard is grouping pagination under 'meta'
+        });
     } catch(err) {
         next(err);
     }
 }
-
 /**
  * Handles the creation of a new recipe by a seller.
  * Captures all culinary details and stores them in the database
@@ -98,53 +113,61 @@ export const addRecipe = async (req, res, next ) => {
         const{
             title,
             description,
-            category,
+            image_url,
             difficulty_level,
             prep_time,
             cook_time,
             servings,
-            dietary_tags,
+            price,
+            rating_avg,
             ingredients,
             instructions,
             chef_note,
-            image_url,
+            approval_status,
+            tags,
+            chef_id,
             status
         } = req.body;
+
+        const finalImageUrl = image_url || (req.file ? req.file.path : null);
+        const finalChefId = chef_id || req.user?.id;
         
-        if (!title || !description || !status){
-            return res.status(400).json({
-                success: false,
-                message: 'Title, description and status are required'
-            });
-        }
+        // Status logic:
+        // - If approval_status is 'draft': status='draft', approval_status='draft' (Save Draft)
+        // - If approval_status is anything else: status='draft', approval_status='pending' (Submit Recipe)
+        const finalApprovalStatus = approval_status === 'draft' ? 'draft' : 'pending';
 
-        const recipe = await recipeService.addRecipe({
-                title,
-                description,
-                category,
-                difficulty_level,
-                prep_time,
-                cook_time,
-                servings,
-                dietary_tags,
-                ingredients,
-                instructions,
-                chef_note,
-                image_url,
-                status
-            });
+        const finalRecipeData = {
+            title: title || 'Draft Recipe',
+            description: description || null,
+            image_url: finalImageUrl,
+            difficulty_level: difficulty_level || null,
+            prep_time: prep_time !== '' && prep_time !== null ? Number(prep_time) : null,
+            cook_time: cook_time !== '' && cook_time !== null ? Number(cook_time) : null,
+            servings: servings !== '' && servings !== null ? Number(servings) : null,
+            price: price !== '' && price !== null ? Number(price) : null,
+            rating_avg: rating_avg !== '' && rating_avg !== null ? Number(rating_avg) : null,
+            ingredients: ingredients || [],
+            instructions: instructions || [],
+            chef_note: chef_note || '',
+            status: 'draft',
+            approval_status: finalApprovalStatus,
+            chef_id: finalChefId,
+            tags,
+        };
 
-    res.status(201).json({
-        success:true,
-        message:'Recipe saved successfully' ,
-        recipe
-    });
+        const result = await recipeService.addRecipe(finalRecipeData);
 
-    }catch (error){
+        res.status(201).json({
+            success: true,
+            message: finalApprovalStatus === 'draft' ? 'Recipe saved as draft successfully' : 'Recipe submitted for approval successfully',
+            recipe: result.recipe,
+            tag: result.tag || null
+        }); // <-- ADDED MISSING BRACE HERE
+    } catch (error){
         next(error);
-    }
+    } // <-- ADDED MISSING BRACE HERE
 };
-
 /**
  * Fetches details of a specific recipe.
  * Acts as a premium gatekeeper: strips out sensitive instructions/ingredients
@@ -222,8 +245,47 @@ export const getRecipeById = async (req, res, next) => {
     }
 };
 
-
 export const verifyRecipe = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { approval_status, rejection_reason } = req.body;
+
+    // 1. Update the recipe status using your service
+    const updatedRecipe = await recipeService.verifyRecipe(id, { 
+      approval_status: approval_status, 
+      rejection_reason: rejection_reason 
+    });
+    console.log("DEBUG: Status is:", approval_status);
+
+    // 2. Log the activity (ONLY if approved)
+    if (approval_status === 'published') {
+        console.log("DEBUG: Entering logActivity..."); // ADD THIS
+      await logActivity(
+        "Recipe Published", 
+        `Recipe ID #${id} was published and is now live.`, 
+        "PUBLICATION"
+      );
+    } else if (approval_status === 'rejected') {
+      await logActivity(
+        "Recipe Rejected", 
+        `Recipe ID #${id} was rejected. Reason: ${rejection_reason}`, 
+        "REJECTION"
+      );
+    }
+    
+    return sendResponse(
+      res, 
+      200, 
+      true, 
+      `Recipe has been ${approval_status}`, 
+      updatedRecipe
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+/*export const verifyRecipe = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { approval_status, rejection_reason } = req.body;
@@ -234,14 +296,13 @@ export const verifyRecipe = async (req, res, next) => {
       res, 
       200, 
       true, 
-     `Recipe has been ${approval_status}`, 
+      `Recipe has been ${approval_status}`, 
       updatedRecipe
     );
   } catch (error) {
     next(error);
   }
 };
-
 // UPDATE 
 
 /**
@@ -308,5 +369,105 @@ export const unlockRecipe = async (req, res, next) => {
             return res.status(400).json({ success: false, message: err.message });
         }
         next(err);
+    }
+};
+/**
+ * Returns an authoritative price quote for a set of recipe IDs before
+ * the buyer signs an on-chain transaction. Works for guests too (no
+ * "already purchased" filtering without a session, but pricing is correct).
+ */
+export const getCheckoutQuote = async (req, res, next) => {
+    try {
+        const { recipeIds } = req.body;
+        const buyerId = req.user?.user_id || req.user?.id || null;
+
+        if (!Array.isArray(recipeIds) || recipeIds.length === 0) {
+            return res.status(400).json({ success: false, message: 'recipeIds must be a non-empty array' });
+        }
+
+        const quote = await recipeService.getCheckoutQuote(buyerId, recipeIds);
+        return sendResponse(res, 200, true, 'Quote calculated successfully', quote);
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * Verifies one XRPL transaction and unlocks every payable recipe in the
+ * batch under a shared batch_id.
+ */
+export const unlockRecipesBatch = async (req, res, next) => {
+    try {
+        const { recipeIds, transactionHash } = req.body;
+        const buyerId = req.user.user_id || req.user.id;
+
+        if (!Array.isArray(recipeIds) || recipeIds.length === 0 || !transactionHash) {
+            return res.status(400).json({
+                success: false,
+                message: 'recipeIds (array) and transactionHash are required',
+            });
+        }
+
+        const result = await recipeService.processBatchRecipeUnlock(buyerId, recipeIds, transactionHash);
+
+        return sendResponse(
+            res,
+            200,
+            true,
+            result.alreadyProcessed
+                ? 'This payment was already processed.'
+                : `Unlocked ${result.unlocked.length} recipe(s) successfully!`,
+            result
+        );
+    } catch (err) {
+        if (
+            err.message.includes('Insufficient') ||
+            err.message.includes('incorrect') ||
+            err.message.includes('successful') ||
+            err.message.includes('Nothing to unlock') ||
+            err.message.includes('could not be found')
+        ) {
+            return res.status(400).json({ success: false, message: err.message });
+        }
+        next(err);
+    }
+};
+
+// src/controllers/recipeController.js
+
+export const getAdminAllRecipes = async (req, res, next) => {
+    try {
+        // Fetch ALL recipes regardless of status, ordered by newest first
+        const { data, error } = await supabase
+    .from("recipes")
+    .select(`
+        *,
+        sellers (
+            full_name
+        )
+    `)
+    .order("created_at", { ascending: false });
+
+        if (error) throw error;
+
+        // Flatten the nested sellers join so the frontend receives a top-level
+        // `full_name` field, consistent with every other recipe endpoint.
+        const formattedData = data.map(recipe => ({
+            ...recipe,
+            full_name: recipe.sellers?.full_name || 'Unassigned Chef',
+            sellers: undefined, // remove nested object to keep the shape clean
+        }));
+
+        return res.status(200).json({
+            success: true,
+            message: "All admin recipes fetched successfully",
+            data: formattedData
+        });
+    } catch (error) {
+        console.error("Admin Fetch Recipes Error:", error);
+        return res.status(500).json({ 
+            success: false, 
+            message: "Failed to fetch recipes for admin" 
+        });
     }
 };

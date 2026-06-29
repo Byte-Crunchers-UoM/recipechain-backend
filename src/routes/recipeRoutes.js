@@ -1,3 +1,5 @@
+//src/routes/recipeRoute.js
+
 import express from 'express';
 import { 
     getAllRecipes,
@@ -8,13 +10,29 @@ import {
     getFilteredRecipes,
     searchRecipes,
     unlockRecipe,
-    verifyRecipe
+    verifyRecipe,
+    getCheckoutQuote,
+    unlockRecipesBatch,
+    getAdminAllRecipes
 } from '../controllers/recipeController.js';
 
 import { requireSession, optionalSession } from '../middleware/sessionmiddleware.js';
 
+import { validateRecipe } from '../middleware/inputValidators.js';
+
 const router = express.Router();
 
+// CREATE 
+router.post('/', validateRecipe, addRecipe);
+
+// READ
+
+
+// UPDATE
+router.put('/:id', updateRecipe);
+
+// DELETE
+router.delete('/:id', deleteRecipe);
 // --- 1. STATIC ROUTES (These should be first) ---
 
 // Search (Use optionalSession so the Purchased badge is visible in the search as well)
@@ -23,32 +41,26 @@ router.get('/search', optionalSession, searchRecipes);
 // Filter (Use optionalSession)
 router.get("/filter", optionalSession, getFilteredRecipes);
 
+router.post('/checkout-quote', optionalSession, getCheckoutQuote);
+router.post('/unlock-batch', requireSession, unlockRecipesBatch); 
+
 // Unlock Recipe (A Session is strictly required for payments)
 router.post('/unlock', requireSession, unlockRecipe);
 
 
-// --- 2. DYNAMIC ROUTES (Routes using an ID should come after) ---
+// --- 2. DYNAMIC ROUTES (Routes using an ID should come after static ones) ---
+
+// Admin: must be before /:id so "admin" is not treated as a recipe ID
+router.get('/admin/all', getAdminAllRecipes);
+
+// Approve / Reject a recipe (admin action)
+router.patch('/:id/verify', verifyRecipe);
 
 // READ BY ID
 // Since optionalSession is here, it will unlock the recipe for logged-in users
 router.get('/:id', optionalSession, getRecipeById);
 
 // GET ALL RECIPES
-// Put this at the very bottom, so it works if the others don't match
 router.get("/", optionalSession, getAllRecipes);
-
-
-// --- 3. WRITE / PROTECTED ROUTES ---
-
-// CREATE
-router.post('/', requireSession, addRecipe);
-
-// UPDATE
-router.put('/:id', requireSession, updateRecipe);
-
-// DELETE
-router.delete('/:id', requireSession, deleteRecipe);
-
-router.patch('/:id/verify', verifyRecipe);
 
 export default router;

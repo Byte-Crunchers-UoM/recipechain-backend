@@ -8,6 +8,11 @@ function getSessionRole(req) {
   return req.user?.role || req.session?.role || null;
 }
 
+/**
+ * Your AI Shopping Assistant
+ * Route: POST /api/ai/shopping-assistant
+ * Used by buyers with session authentication.
+ */
 export const askAIShoppingAssistant = async (req, res) => {
   try {
     const buyerId = getSessionUserId(req);
@@ -51,4 +56,41 @@ export const askAIShoppingAssistant = async (req, res) => {
         "AI Shopping Assistant failed. Please try again later.",
     });
   }
+};
+
+/**
+ * Friend's general AI Chatbot
+ * Route: POST /api/ai/chat
+ * Used for general recipe recommendation chatbot.
+ */
+export const handleChat = async (req, res) => {
+  try {
+    const { message } = req.body || {};
+
+    if (!message || !String(message).trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Message is required",
+      });
+    }
+
+    const response = await aiService.processChatMessage(message);
+
+    return res.status(200).json({
+      success: true,
+      data: response,
+    });
+  } catch (error) {
+    console.error("AI Chat Error:", error);
+
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || "AI process failed.",
+    });
+  }
+};
+
+export default {
+  askAIShoppingAssistant,
+  handleChat,
 };

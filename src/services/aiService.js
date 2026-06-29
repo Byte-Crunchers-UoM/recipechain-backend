@@ -7,6 +7,8 @@ const MAX_UNLOCKED_RECIPES = 25;
 const MAX_LOCKED_RECIPES = 35;
 const GEMINI_TIMEOUT_MS = 30000;
 
+let chatClientsPromise = null;
+
 function requireAdminClient() {
   if (!supabaseAdmin) {
     const error = new Error("Supabase admin client is not configured");
@@ -210,7 +212,7 @@ async function getBuyerAIRecipeContext(buyerId) {
   };
 }
 
-function buildSystemPrompt() {
+function buildShoppingAssistantSystemPrompt() {
   return `
 You are RecipeChain's AI Shopping Assistant.
 
@@ -397,7 +399,7 @@ async function generateShoppingAssistantReply({ buyerId, prompt, messages }) {
   const geminiMessages = [
     {
       role: "system",
-      content: buildSystemPrompt(),
+      content: buildShoppingAssistantSystemPrompt(),
     },
     ...safeHistory,
     {
@@ -420,6 +422,190 @@ ${JSON.stringify(contextPayload, null, 2)}
   };
 }
 
+/**
+ * Friend's AI Chatbot dependencies are loaded only when /api/ai/chat is used.
+ * This prevents the whole backend from crashing if one AI chatbot dependency/env key
+ * is missing while testing the shopping assistant.
+ */
+async function getChatClients() {
+  if (chatClientsPromise) return chatClientsPromise;
+
+  chatClientsPromise = (async () => {
+    const groqOrOpenAIKey = process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY;
+    const huggingFaceKey = process.env.HUGGINGFACE_API_KEY;
+    const pineconeKey = process.env.PINECONE_API_KEY;
+
+    const missingKeys = [];
+
+    if (!groqOrOpenAIKey) missingKeys.push("GROQ_API_KEY or OPENAI_API_KEY");
+    if (!huggingFaceKey) missingKeys.push("HUGGINGFACE_API_KEY");
+    if (!pineconeKey) missingKeys.push("PINECONE_API_KEY");
+
+    if (missingKeys.length > 0) {
+      const error = new Error(
+        `Missing AI chatbot environment variable(s): ${missingKeys.join(", ")}`
+      );
+      error.statusCode = 500;
+      throw error;
+    }
+
+    try {
+      const [{ default: OpenAI }, { HfInference }, { Pinecone }] =
+        await Promise.all([
+          import("openai"),
+          import("@huggingface/inference"),
+          import("@pinecone-database/pinecone"),
+        ]);
+
+      const openaiClient = new OpenAI({
+        apiKey: groqOrOpenAIKey,
+        baseURL:
+          process.env.OPENAI_BASE_URL ||
+          process.env.GROQ_BASE_URL ||
+          "https://api.groq.com/openai/v1",
+      });
+
+      const hf = new HfInference(huggingFaceKey);
+      const pc = new Pinecone({ apiKey: pineconeKey });
+
+      return {
+        openaiClient,
+        hf,
+        pc,
+      };
+    } catch (error) {
+      const dependencyError = new Error(
+        "AI chatbot dependencies are missing. Run: npm install openai @huggingface/inference @pinecone-database/pinecone"
+      );
+      dependencyError.statusCode = 500;
+      dependencyError.cause = error;
+      throw dependencyError;
+    }
+  })();
+
+  return chatClientsPromise;
+}
+
+function normalizeEmbeddingResult(embeddingResult) {
+  if (!embeddingResult) return [];
+
+  if (Array.isArray(embeddingResult)) {
+    if (embeddingResult.length === 0) return [];
+
+    if (Array.isArray(embeddingResult[0])) {
+      const rows = embeddingResult.filter(
+        (row) => Array.isArray(row) && row.length > 0
+      );
+
+      if (rows.length === 0) return [];
+
+      const dimension = rows[0].length;
+      const averaged = new Array(dimension).fill(0);
+
+      rows.forEach((row) => {
+        row.forEach((value, index) => {
+          averaged[index] += Number(value) || 0;
+        });
+      });
+
+      return averaged.map((value) => value / rows.length);
+    }
+
+    return embeddingResult.map((value) => Number(value) || 0);
+  }
+
+  return Array.from(embeddingResult).map((value) => Number(value) || 0);
+}
+
+function normalizeRecipeMetadata(match) {
+  const metadata = match?.metadata || {};
+
+  return {
+    recipe_id: metadata.recipe_id || match?.id || null,
+    title: metadata.title || "Untitled Recipe",
+    price: metadata.price ?? metadata.price_xrp ?? null,
+    prep_time: metadata.prep_time ?? metadata.prep_time_minutes ?? null,
+    image_url: metadata.image_url || metadata.image || null,
+  };
+}
+
+async function processChatMessage(userMessage) {
+  const cleanMessage = truncateText(userMessage, MAX_PROMPT_LENGTH);
+
+  if (!cleanMessage) {
+    const error = new Error("Message is required");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const { openaiClient, hf, pc } = await getChatClients();
+
+  const embeddingResult = await hf.featureExtraction({
+    model:
+      process.env.HUGGINGFACE_EMBEDDING_MODEL ||
+      "sentence-transformers/all-mpnet-base-v2",
+    inputs: cleanMessage,
+  });
+
+  const queryEmbedding = normalizeEmbeddingResult(embeddingResult);
+
+  if (!queryEmbedding.length) {
+    const error = new Error("Failed to generate chatbot embedding");
+    error.statusCode = 502;
+    throw error;
+  }
+
+  const indexName = process.env.PINECONE_INDEX || "recipechain-index";
+  const index = pc.index(indexName);
+
+  const searchResults = await index.query({
+    vector: queryEmbedding,
+    topK: Number(process.env.PINECONE_TOP_K || 3),
+    includeMetadata: true,
+  });
+
+  const matches = searchResults?.matches || [];
+
+  const contextText =
+    matches.length > 0
+      ? matches
+          .map((match) => {
+            const metadata = match.metadata || {};
+
+            return `- ${metadata.title || "Untitled Recipe"} (Price: ${
+              metadata.price ?? metadata.price_xrp ?? "N/A"
+            } XRP, Prep: ${
+              metadata.prep_time ?? metadata.prep_time_minutes ?? "N/A"
+            } mins)`;
+          })
+          .join("\n")
+      : "No close recipe matches found in Pinecone.";
+
+  const completion = await openaiClient.chat.completions.create({
+    model: process.env.GROQ_MODEL || process.env.OPENAI_MODEL || "llama-3.1-8b-instant",
+    messages: [
+      {
+        role: "system",
+        content: `You are the RecipeChain AI. Here are database matches:\n${contextText}\nRecommend these specific recipes enthusiastically in under 3 sentences.`,
+      },
+      {
+        role: "user",
+        content: cleanMessage,
+      },
+    ],
+  });
+
+  const fullRecipes = matches.map(normalizeRecipeMetadata);
+
+  return {
+    reply:
+      completion?.choices?.[0]?.message?.content ||
+      "I found some recipes, but I could not generate a full reply.",
+    recipes: fullRecipes,
+  };
+}
+
 export default {
   generateShoppingAssistantReply,
+  processChatMessage,
 };
