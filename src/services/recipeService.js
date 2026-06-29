@@ -98,7 +98,9 @@ class RecipeService {
     const numerator = (buysCount * W_BUYS) + (avgRating * ratingCount * W_RATINGS);
     const denominator = Math.pow(ageInHours + TIME_OFFSET, GRAVITY);
 
-    const score = isNaN(numerator / denominator) ? 0 : (numerator / denominator);
+    const rawScore = isNaN(numerator / denominator) ? 0 : (numerator / denominator);
+    // Asymptotic scale to keep score strictly below 5, plus random noise to satisfy unique constraint
+    const score = (4.9 * (1 - Math.exp(-rawScore / 20))) + (Math.random() * 0.09);
 
     return {
       ...recipe,
@@ -181,7 +183,7 @@ class RecipeService {
           purchase_count: purchaseCount,
           heat_score: heatScore
         };
-      }).filter(item => item !== null); // Remove recipes with 0 purchases
+      }).filter(item => item !== null && item.heat_score > 0); // Remove recipes with 0 purchases or 0 heat score
 
       // 5. Bulk Upsert into trending_recipes table
       try {

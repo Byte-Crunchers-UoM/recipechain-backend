@@ -113,12 +113,8 @@ export const bulkUpsertTrendingRecipesModel = async (trendingDataArray) => {
     .insert(trendingDataArray);
 
   if (error) {
-    // Fallback to upsert if insert fails
-    const { data: upsertData, error: upsertError } = await supabase
-      .from("trending_recipes")
-      .upsert(trendingDataArray, { onConflict: "recipe_id" });
-    if (upsertError) throw upsertError;
-    return upsertData;
+    console.error("--- DEBUG INSERT ERROR:", error);
+    throw error;
   }
   return data;
 };
