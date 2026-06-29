@@ -68,23 +68,58 @@ export const getAllRecipesModel = async () => {
 
 // UPSERT TRENDING RECIPE
 export const upsertTrendingRecipeModel = async (trendingData) => {
+  // Delete existing record first to ensure no duplicates in the database
+  await supabase
+    .from("trending_recipes")
+    .delete()
+    .eq("recipe_id", trendingData.recipe_id);
+
   const { data, error } = await supabase
     .from("trending_recipes")
-    .upsert(trendingData, { onConflict: "recipe_id" })
+    .insert([trendingData])
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    // Fallback if insert fails
+    const { data: upsertData, error: upsertError } = await supabase
+      .from("trending_recipes")
+      .upsert(trendingData, { onConflict: "recipe_id" })
+      .select()
+      .single();
+    if (upsertError) throw upsertError;
+    return upsertData;
+  }
   return data;
 };
 
 // BULK UPSERT TRENDING RECIPES
 export const bulkUpsertTrendingRecipesModel = async (trendingDataArray) => {
+  if (!trendingDataArray || trendingDataArray.length === 0) return [];
+
+  // Delete existing records first to ensure no duplicates in the database
+  const recipeIds = trendingDataArray.map(t => t.recipe_id);
+  const batchSize = 100;
+  for (let i = 0; i < recipeIds.length; i += batchSize) {
+    const batchIds = recipeIds.slice(i, i + batchSize);
+    await supabase
+      .from("trending_recipes")
+      .delete()
+      .in("recipe_id", batchIds);
+  }
+
   const { data, error } = await supabase
     .from("trending_recipes")
-    .upsert(trendingDataArray, { onConflict: "recipe_id" });
+    .insert(trendingDataArray);
 
-  if (error) throw error;
+  if (error) {
+    // Fallback to upsert if insert fails
+    const { data: upsertData, error: upsertError } = await supabase
+      .from("trending_recipes")
+      .upsert(trendingDataArray, { onConflict: "recipe_id" });
+    if (upsertError) throw upsertError;
+    return upsertData;
+  }
   return data;
 };
 
