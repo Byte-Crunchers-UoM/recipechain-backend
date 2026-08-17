@@ -1,32 +1,77 @@
 import express from 'express';
-import {
-        addRecipe,
-        getRecipeById,
-        updateRecipe,
-        deleteRecipe,
-        getTrendingRecipes,
-        getRecipesByChef
+import { 
+    getAllRecipes,
+    addRecipe,
+    getRecipeById,
+    updateRecipe,
+    deleteRecipe,
+    getFilteredRecipes,
+    searchRecipes,
+    unlockRecipe,
+    verifyRecipe,
+    getCheckoutQuote,
+    unlockRecipesBatch,
+    getTrendingRecipes,
+    getRecipesByChef
 } from '../controllers/recipeController.js';
+
+import { requireSession, optionalSession } from '../middleware/sessionmiddleware.js';
+import { validateRecipe } from '../middleware/inputValidators.js';
 
 const router = express.Router();
 
-//CREATE
-//CREATE
-router.post('/', addRecipe);
+// --- 1. STATIC ROUTES (These should be first) ---
 
-// TRENDING (Must be before /:id)
+// CREATE 
+router.post('/', validateRecipe, addRecipe);
+
+// TRENDING
 router.get('/trending', getTrendingRecipes);
 
-// READ CHEF RECIPES (Must be before /:id)
+// Search (Use optionalSession so the Purchased badge is visible in the search as well)
+router.get('/search', optionalSession, searchRecipes);
+
+// Filter (Use optionalSession)
+router.get("/filter", optionalSession, getFilteredRecipes);
+
+router.post('/checkout-quote', optionalSession, getCheckoutQuote);
+router.post('/unlock-batch', requireSession, unlockRecipesBatch); 
+
+// Unlock Recipe (A Session is strictly required for payments)
+router.post('/unlock', requireSession, unlockRecipe);
+
+
+// --- 2. DYNAMIC ROUTES (Routes using an ID should come after) ---
+
+// READ CHEF RECIPES
 router.get('/chef/:id', getRecipesByChef);
 
-//READ
-router.get('/:id', getRecipeById);
+// READ BY ID
+// Since optionalSession is here, it will unlock the recipe for logged-in users
+router.get('/:id', optionalSession, getRecipeById);
 
-//UPDATE
+// UPDATE
 router.put('/:id', updateRecipe);
 
-//DELETE
+// DELETE
 router.delete('/:id', deleteRecipe);
+
+// GET ALL RECIPES
+// Put this at the very bottom, so it works if the others don't match
+router.get("/", optionalSession, getAllRecipes);
+
+
+/* --- 3. WRITE / PROTECTED ROUTES ---
+
+// CREATE
+router.post('/', requireSession, addRecipe);
+
+// UPDATE
+router.put('/:id', requireSession, updateRecipe);
+
+// DELETE
+router.delete('/:id', requireSession, deleteRecipe);
+
+router.patch('/:id/verify', verifyRecipe);*/
 
 export default router;
