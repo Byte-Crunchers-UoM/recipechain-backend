@@ -1,7 +1,7 @@
 //src/routes/recipeRoute.js
 
 import express from 'express';
-import { 
+import {
     getAllRecipes,
     addRecipe,
     getRecipeById,
@@ -13,7 +13,9 @@ import {
     verifyRecipe,
     getCheckoutQuote,
     unlockRecipesBatch,
-    getAdminAllRecipes
+    getAdminAllRecipes,
+    getTrendingRecipes,
+    getRecipesByChef
 } from '../controllers/recipeController.js';
 
 import { requireSession, optionalSession } from '../middleware/sessionmiddleware.js';
@@ -22,7 +24,7 @@ import { validateRecipe } from '../middleware/inputValidators.js';
 
 const router = express.Router();
 
-// CREATE 
+// CREATE
 router.post('/', validateRecipe, addRecipe);
 
 // READ
@@ -40,6 +42,12 @@ router.get('/search', optionalSession, searchRecipes);
 
 // Filter (Use optionalSession)
 router.get("/filter", optionalSession, getFilteredRecipes);
+
+// Trending (must be before /:id)
+router.get('/trending', getTrendingRecipes);
+
+// Recipes by chef (must be before /:id)
+router.get('/chef/:id', getRecipesByChef);
 
 router.post('/checkout-quote', optionalSession, getCheckoutQuote);
 router.post('/unlock-batch', requireSession, unlockRecipesBatch); 

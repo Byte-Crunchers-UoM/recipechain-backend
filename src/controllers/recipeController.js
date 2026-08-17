@@ -465,9 +465,44 @@ export const getAdminAllRecipes = async (req, res, next) => {
         });
     } catch (error) {
         console.error("Admin Fetch Recipes Error:", error);
-        return res.status(500).json({ 
-            success: false, 
-            message: "Failed to fetch recipes for admin" 
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch recipes for admin"
         });
+    }
+};
+
+/**
+ * Returns trending recipes, ranked by a recency/popularity heat score.
+ */
+export const getTrendingRecipes = async (req, res, next) => {
+    try {
+        const limit = parseInt(req.query.limit) || 10;
+        const category = req.query.category || null;
+
+        const recipes = await recipeService.getTrendingRecipes(limit, category);
+
+        return res.status(200).json({
+            success: true,
+            count: recipes.length,
+            recipes,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * Returns all recipes published by a given chef.
+ */
+export const getRecipesByChef = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+
+        const recipes = await recipeService.getRecipesByChef(id);
+
+        return sendResponse(res, 200, true, "Chef recipes fetched successfully", recipes);
+    } catch (error) {
+        next(error);
     }
 };

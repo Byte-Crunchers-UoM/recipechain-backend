@@ -540,3 +540,66 @@ export const ensureSellerRowModel = async (userId) => {
   if (error) throw error;
   return data;
 };
+
+/**
+ * Fetches a chef's public profile (seller row + social links).
+ *
+ * @param {string} chefId - Seller/user ID.
+ * @returns {Promise<{seller: object, socials: object}>} Chef profile data.
+ */
+export const getChefProfileModel = async (chefId) => {
+  const { data: seller, error: sellerError } = await supabase
+    .from("sellers")
+    .select("*")
+    .eq("user_id", chefId)
+    .single();
+
+  if (sellerError && sellerError.code !== "PGRST116") {
+    throw sellerError;
+  }
+
+  const { data: socials, error: socialError } = await supabase
+    .from("social_links")
+    .select("*")
+    .eq("user_id", chefId)
+    .single();
+
+  if (socialError && socialError.code !== "PGRST116") {
+    throw socialError;
+  }
+
+  return { seller, socials };
+};
+
+/**
+ * Increments a seller's followers_count by one.
+ *
+ * @param {string} chefId - Seller/user ID.
+ * @returns {Promise<object>} Updated seller row.
+ */
+export const incrementFollowersModel = async (chefId) => {
+  const { data: seller, error: fetchError } = await supabase
+    .from("sellers")
+    .select("followers_count")
+    .eq("user_id", chefId)
+    .single();
+
+  if (fetchError) {
+    if (fetchError.code === "PGRST116") {
+      throw new Error("Seller not found");
+    }
+    throw fetchError;
+  }
+
+  const currentCount = seller.followers_count || 0;
+
+  const { data, error } = await supabase
+    .from("sellers")
+    .update({ followers_count: currentCount + 1 })
+    .eq("user_id", chefId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+};

@@ -10,6 +10,7 @@ import userRoutes from "./routes/userRoutes.js";
 import buyerRoutes from "./routes/buyerRoutes.js";
 import sellerRoutes from "./routes/sellerRoutes.js";
 import recipeRoutes from "./routes/recipeRoutes.js";
+import followedChefsRoutes from "./routes/followedChefsRoutes.js";
 import errorHandler from "./middleware/errorHandler.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import cookieParser from "cookie-parser";
@@ -73,6 +74,7 @@ app.get("/test-db", async (req, res) => {
 // API routes
 app.use("/api", userRoutes);
 app.use("/api/recipes", recipeRoutes);
+app.use("/api/chefs", followedChefsRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/buyers", buyerRoutes);
 app.use("/api/sellers", sellerRoutes);
