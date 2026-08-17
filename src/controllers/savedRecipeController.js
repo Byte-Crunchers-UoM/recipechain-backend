@@ -2,7 +2,7 @@
 import savedRecipesService from "../services/savedRecipesService.js";
 
 const sendResponse = (res, statusCode, success, message, data = null) => {
-    res.status(statusCode).json({ success, message, data });
+    res.status(statusCode).json({ success, message, data, recipes: data });
 }
 
 export const getSavedRecipes = async (req, res, next) => {

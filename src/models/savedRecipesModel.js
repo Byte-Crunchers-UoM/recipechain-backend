@@ -7,7 +7,14 @@ import { supabase } from "../config/supabase.js";
  * Database Model: Retrieves all recipes saved by a specific user from Supabase.
  * Fetches related recipe details (title, image, time, difficulty, price) via a join.
  */
-export const getSavedRecipeModel = async (user_id) => {
+export const getSavedRecipeModel = async (user_id_or_email) => {
+    let finalUserId = user_id_or_email;
+    if (user_id_or_email && user_id_or_email.includes('@')) {
+        const { data: userData } = await supabase.from('users').select('user_id').eq('email', user_id_or_email).single();
+        if (userData?.user_id) finalUserId = userData.user_id;
+        else return [];
+    }
+
     const { data, error } = await supabase
         .from('saved_recipes')
         .select(`
@@ -22,7 +29,7 @@ export const getSavedRecipeModel = async (user_id) => {
                 price
             )
         `)
-        .eq('user_id', user_id)
+        .eq('user_id', finalUserId)
         .order('created_at', { ascending: false }); 
 
     if (error) throw error;
@@ -32,10 +39,17 @@ export const getSavedRecipeModel = async (user_id) => {
 /**
  * Database Model: Inserts a new record into the saved_recipes table to bookmark a recipe.
  */
-export const addsavedRecipesModel = async (user_id, recipe_id) => {
+export const addsavedRecipesModel = async (user_id_or_email, recipe_id) => {
+    let finalUserId = user_id_or_email;
+    if (user_id_or_email && user_id_or_email.includes('@')) {
+        const { data: userData } = await supabase.from('users').select('user_id').eq('email', user_id_or_email).single();
+        if (userData?.user_id) finalUserId = userData.user_id;
+        else throw new Error("User not found for the provided email");
+    }
+
     const { data, error } = await supabase
         .from('saved_recipes')
-        .insert([{ user_id, recipe_id }])
+        .insert([{ user_id: finalUserId, recipe_id }])
         .select()
         .single();
         
@@ -46,11 +60,18 @@ export const addsavedRecipesModel = async (user_id, recipe_id) => {
 /**
  * Database Model: Deletes a specific recipe from a user's saved list in the database.
  */
-export const deleteSavedRecipeModel = async (user_id, recipe_id) => {
+export const deleteSavedRecipeModel = async (user_id_or_email, recipe_id) => {
+    let finalUserId = user_id_or_email;
+    if (user_id_or_email && user_id_or_email.includes('@')) {
+        const { data: userData } = await supabase.from('users').select('user_id').eq('email', user_id_or_email).single();
+        if (userData?.user_id) finalUserId = userData.user_id;
+        else return false;
+    }
+
     const { error } = await supabase
         .from('saved_recipes')
         .delete()
-        .eq('user_id', user_id)
+        .eq('user_id', finalUserId)
         .eq('recipe_id', recipe_id);
         
     if (error) throw error;
