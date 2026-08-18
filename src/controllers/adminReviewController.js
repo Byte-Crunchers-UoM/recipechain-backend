@@ -71,23 +71,24 @@ export const approveReview = async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("feedbacks")
-      .update({ status: "not reported" })
+      .delete()
       .eq("feedback_id", id)
       .select();
 
     if (error) throw error;
 
     await logActivity(
-  "Review Approved",
-  `Review ${id} report was dismissed by admin.`,
-  "REVIEW_MODERATION"
-);
+      "Review Approved",
+      `Review ${id} was approved and deleted by admin.`,
+      "REVIEW_MODERATION"
+    );
 
     return res.status(200).json({
       success: true,
-      message: "Review approved successfully",
+      message: "Review approved and deleted successfully",
       data: data?.[0] || null
     });
+
   } catch (error) {
     console.error("Approve Review Error:", error);
 
@@ -105,24 +106,31 @@ export const approveReview = async (req, res) => {
  */
 export const removeReview = async (req, res) => {
   const { id } = req.params;
+
   try {
     const { data, error } = await supabase
       .from("feedbacks")
-      .update({ status: "removed" })
+      .update({ status: "not reported" })
       .eq("feedback_id", id)
       .select();
 
     if (error) throw error;
 
-    await logActivity("Review Removed", `Review ${id} was removed.`, "REVIEW_MODERATION");
+    await logActivity(
+      "Review Removed",
+      `Review ${id} report was dismissed by admin.`,
+      "REVIEW_MODERATION"
+    );
 
     return res.status(200).json({
       success: true,
       message: "Review removed successfully",
       data: data?.[0] || null
     });
+
   } catch (error) {
     console.error("Remove Review Error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Failed to remove review",
