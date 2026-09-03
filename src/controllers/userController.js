@@ -274,7 +274,12 @@ export const deleteMyAccountPermanently = async (req, res) => {
     await userService.deleteMyAccountPermanently(userId);
 
     // Clear the session cookie so the deleted user cannot continue using the old session.
-    res.clearCookie("rc_session", { path: "/" });
+    const isProduction = process.env.NODE_ENV === "production";
+    res.clearCookie("rc_session", {
+      path: "/",
+      sameSite: isProduction ? (process.env.COOKIE_SAME_SITE || "none") : "lax",
+      secure: isProduction,
+    });
 
     return res.status(200).json({
       ok: true,

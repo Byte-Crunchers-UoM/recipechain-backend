@@ -18,7 +18,7 @@ import {
     getRecipesByChef
 } from '../controllers/recipeController.js';
 
-import { requireSession, optionalSession } from '../middleware/sessionmiddleware.js';
+import { requireSession, optionalSession } from '../middleware/sessionMiddleware.js';
 
 import { validateRecipe } from '../middleware/inputValidators.js';
 
