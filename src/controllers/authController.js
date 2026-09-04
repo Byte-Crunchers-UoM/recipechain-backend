@@ -94,15 +94,16 @@ const makeSessionToken = (payload) => {
  * @returns {void}
  */
 const setSessionCookie = (res, token) => {
+  const isProduction = process.env.NODE_ENV === "production";
   res.cookie("rc_session", token, {
     // httpOnly protects the session from being read directly by frontend JavaScript.
     httpOnly: true,
 
-    // lax keeps normal navigation/login flows working while reducing CSRF exposure.
-    sameSite: "lax",
+    // In production cross-site (e.g. Vercel -> Render), sameSite must be "none" with secure: true
+    sameSite: isProduction ? (process.env.COOKIE_SAME_SITE || "none") : "lax",
 
     // Keep false for local development HTTP. Use true in production with HTTPS.
-    secure: false,
+    secure: isProduction,
 
     path: "/",
 
@@ -212,7 +213,12 @@ export const syncWeb3AuthUser = async (req, res) => {
  * @returns {Promise<void>}
  */
 export const logout = async (req, res) => {
-  res.clearCookie("rc_session", { path: "/" });
+  const isProduction = process.env.NODE_ENV === "production";
+  res.clearCookie("rc_session", {
+    path: "/",
+    sameSite: isProduction ? (process.env.COOKIE_SAME_SITE || "none") : "lax",
+    secure: isProduction,
+  });
 
   return res.json({
     ok: true,

@@ -274,7 +274,12 @@ export const deleteMyAccountPermanently = async (req, res) => {
     await userService.deleteMyAccountPermanently(userId);
 
     // Clear the session cookie so the deleted user cannot continue using the old session.
-    res.clearCookie("rc_session", { path: "/" });
+    const isProduction = process.env.NODE_ENV === "production";
+    res.clearCookie("rc_session", {
+      path: "/",
+      sameSite: isProduction ? (process.env.COOKIE_SAME_SITE || "none") : "lax",
+      secure: isProduction,
+    });
 
     return res.status(200).json({
       ok: true,
@@ -287,5 +292,50 @@ export const deleteMyAccountPermanently = async (req, res) => {
       ok: false,
       message: e?.message || "Failed to delete account permanently",
     });
+  }
+};
+
+/**
+ * Returns a chef's public profile (seller info + social links).
+ *
+ * @param {import("express").Request} req - Request params contain chef/seller ID.
+ * @param {import("express").Response} res - Response used to return chef profile.
+ * @param {import("express").NextFunction} next - Express error handler.
+ * @returns {Promise<void>}
+ */
+export const getChefProfile = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const profile = await userService.getChefProfile(id);
+
+    return sendResponse(res, 200, true, "Chef profile retrieved successfully", profile);
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Follows a chef on behalf of a buyer by incrementing the chef's follower count.
+ *
+ * @param {import("express").Request} req - Request params contain chef ID, body contains buyerId.
+ * @param {import("express").Response} res - Response used to return updated seller.
+ * @param {import("express").NextFunction} next - Express error handler.
+ * @returns {Promise<void>}
+ */
+export const followUser = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { buyerId } = req.body;
+
+    if (!buyerId) {
+      return sendResponse(res, 400, false, "Buyer ID is required");
+    }
+
+    const updatedSeller = await userService.incrementFollowers(id);
+
+    return sendResponse(res, 200, true, "Successfully followed chef", updatedSeller);
+  } catch (err) {
+    next(err);
   }
 };

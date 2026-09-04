@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { supabase } from "../config/supabase.js";
 import sellerService from "../services/sellerService.js";
+import { logActivity } from '../utils/activityLogger.js';
 
 const getAuthenticatedUserId = (req) => req.session?.user_id || req.user?.user_id;
 
@@ -173,8 +174,45 @@ export const getSellerById = async (req, res) => {
   }
 };
 
-
 export const verifySeller = async (req, res) => {
+  const { id } = req.params;
+  const { status, rejection_reason, kyc_approval_page_seen } = req.body;
+
+  try {
+    const normalizedStatus = status ? status.toLowerCase() : '';
+
+    const { data, error } = await supabase
+      .from('sellers')
+      .update({ 
+        verification_status: normalizedStatus,
+        rejection_reason: normalizedStatus === 'rejected' ? rejection_reason : null,
+        verified_at: normalizedStatus === 'approved' ? new Date().toISOString() : null,
+        kyc_approval_page_seen: kyc_approval_page_seen ?? false
+      })
+      .eq('user_id', id)
+      .select();
+
+    if (error) throw error;
+
+    // --- ADD THIS LOGGING LOGIC ---
+    if (normalizedStatus === 'approved') {
+        await logActivity("Seller Verified", `Seller ${id} has been approved.`, "SELLER_VERIFICATION");
+    } else if (normalizedStatus === 'rejected') {
+        await logActivity("Seller Rejected", `Seller ${id} was rejected. Reason: ${rejection_reason}`, "SELLER_REJECTION");
+    }
+    // ------------------------------
+    
+    return res.status(200).json({ 
+      success: true, 
+      message: `Seller status updated to ${normalizedStatus}`, 
+      data 
+    });
+  } catch (error) {
+    console.error("Update Error:", error.message);
+    return res.status(500).json({ success: false, errorDetails: error.message });
+  }
+};
+/*export const verifySeller = async (req, res) => {
   const { id } = req.params;
   const { status, rejection_reason, kyc_approval_page_seen } = req.body;
 
@@ -206,7 +244,7 @@ export const verifySeller = async (req, res) => {
     console.error("Update Error:", error.message);
     return res.status(500).json({ success: false, errorDetails: error.message });
   }
-};
+};*/
 
 // ... keep your existing updateSeller and deleteSeller functions here ...
 

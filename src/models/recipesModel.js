@@ -15,13 +15,13 @@ export const getAllRecipesModel = async (from, to) => {
         *,
         feedback_images(*)
       )
-    `, { count: 'exact' }) 
+    `, { count: 'exact' })
     .eq('status', 'active')
     .eq('approval_status', 'published') // Added approval_status filter
     .order('created_at', { ascending: false })
-    .range(from, to); 
-    
-  if (error) throw error; 
+    .range(from, to);
+
+  if (error) throw error;
 
   const formattedData = data.map(recipe => ({
     ...recipe,
@@ -42,7 +42,7 @@ export const getAllRecipesModel = async (from, to) => {
  */
 export const getFilteredRecipesModel = async (filters) => {
   const { difficulty_level, goal, dietary_tags, cuisine, meal_type, occasion } = filters;
-  
+
   let query = supabase
     .from('recipes')
     .select(`
@@ -62,22 +62,22 @@ export const getFilteredRecipesModel = async (filters) => {
   if (cuisine) query = query.ilike('tags.cuisine', cuisine);
   if (meal_type) query = query.ilike('tags.meal_type', meal_type);
   if (occasion) query = query.ilike('tags.occasion', occasion);
-  
+
   const { data, error } = await query.order('created_at', { ascending: false });
-  
+
   if (error) throw error;
   return data;
 };
 
-// Search Recipes 
+// Search Recipes
 export const searchRecipesModel = async (searchTerm) => {
   const { data, error } = await supabase
     .from('recipes')
-    .select('*, sellers:chef_id(full_name, display_name)') 
+    .select('*, sellers:chef_id(full_name, display_name)')
     .eq('status', 'active')
     .eq('approval_status', 'published') // Added approval_status filter
-    .ilike('title', `%${searchTerm}%`); 
-    
+    .ilike('title', `%${searchTerm}%`);
+
   if (error) throw error;
   return data;
 };
@@ -86,14 +86,55 @@ export const searchRecipesModel = async (searchTerm) => {
  * Database Model: Inserts a newly created recipe into the database.
  */
 export const addRecipeModel = async (recipeData) =>{
-    const {data,error} = await supabase
-    .from("recipes")
-    .insert([recipeData])
-    .select()
-    .single();
+  const { tags, ...restRecipe } = recipeData;
+  let tagRow = null;
 
-  if (error) throw error;
-  return data;
+  try {
+    const hasNonEmptyTag = tags && Object.values(tags).some(v => {
+      if (v === null || v === undefined) return false;
+      if (Array.isArray(v)) return v.length > 0;
+      return String(v).trim() !== '';
+    });
+
+    if (hasNonEmptyTag) {
+      const {
+        dietary_tags = null,
+        goal = null,
+        meal_type = null,
+        occasion = null,
+        cuisine = null
+      } = tags;
+
+      const tagPayload = { dietary_tags, goal, meal_type, occasion, cuisine };
+      const { data: insertedTag, error: tagError } = await supabase
+        .from('tags')
+        .insert([tagPayload])
+        .select()
+        .single();
+
+      if (tagError) throw tagError;
+      tagRow = insertedTag;
+
+      const tagId = tagRow?.id ?? tagRow?.tag_id ?? tagRow?.tags_id;
+      if (tagId) {
+        restRecipe.tag_id = tagId;
+      }
+    }
+
+    restRecipe.ingredients = restRecipe.ingredients || [];
+    restRecipe.instructions = restRecipe.instructions || [];
+
+    const { data: recipe, error: recipeError } = await supabase
+      .from('recipes')
+      .insert([restRecipe])
+      .select()
+      .single();
+
+    if (recipeError) throw recipeError;
+    return { recipe, tag: tagRow };
+  } catch (error) {
+    throw error;
+  }
 };
 
 /**
@@ -152,8 +193,8 @@ export const deleteRecipeModel = async (id) => {
 export const getRecipeWithSellerModel = async (recipeId) => {
     const { data, error } = await supabase
         .from('recipes')
-        .select('*, sellers(user_id)') 
-        .eq('recipe_id', recipeId) 
+        .select('*, sellers(user_id)')
+        .eq('recipe_id', recipeId)
         .single();
     if (error) throw error;
     return data;
@@ -175,7 +216,7 @@ export const savePaymentItemsModel = async (items) => {
  */
 export const savePaymentRecordModel = async (paymentData) => {
     const { data, error } = await supabase
-        .from('payments') 
+        .from('payments')
         .insert([paymentData])
         .select('payment_id') // Get the newly created ID
         .single();
@@ -217,11 +258,11 @@ export const checkPurchaseStatusModel = async (buyerId, recipeId) => {
         .eq('buyer_id', buyerId)
         .eq('recipe_id', recipeId)
         .single();
-    
-    if (error && error.code !== 'PGRST116') { 
+
+    if (error && error.code !== 'PGRST116') {
         throw error;
     }
-    return !!data; 
+    return !!data;
 };
 
 // Get the IDs of the Recipes purchased by a User
@@ -230,18 +271,18 @@ export const getUserPurchasesModel = async (userId) => {
         .from('recipe_purchases')
         .select('recipe_id')
         .eq('buyer_id', userId);
-    
+
     if (error) throw error;
-    return data || []; 
+    return data || [];
 };
 
 export const verifyRecipeModel = async (recipeId, { approval_status, rejection_reason }) => {
-  
+
   const { data, error } = await supabase
     .from('recipes')
-    .update({ 
-      approval_status: approval_status, 
-      rejection_reason: approval_status === 'rejected' ? rejection_reason : null 
+    .update({
+      approval_status: approval_status,
+      rejection_reason: approval_status === 'rejected' ? rejection_reason : null
     })
     .eq('recipe_id', recipeId)
     .select()
@@ -251,10 +292,9 @@ export const verifyRecipeModel = async (recipeId, { approval_status, rejection_r
     console.error("Database Update Error:", error.message);
     throw error;
   }
-  
+
   return data;
 };
-
 /**
  * Database Model: Fetches a set of recipes by ID, with seller info,
  * for batch checkout price calculation.
@@ -299,4 +339,147 @@ export const getExistingPaymentByHashModel = async (transactionHash) => {
 
     if (error) throw error;
     return data;
+};
+
+// READ ALL (for trending calculation)
+export const getAllRecipesForTrendingModel = async () => {
+  const { data, error } = await supabase
+    .from("recipes")
+    .select("*, sellers (full_name)");
+
+  if (error) {
+    console.error('Error fetching recipes with sellers:', error);
+    // Fallback to basic select if join fails
+    const { data: basicData, error: basicError } = await supabase.from("recipes").select("*");
+    if (basicError) throw basicError;
+    return basicData;
+  }
+  return data;
+};
+
+// --- MULTI-TABLE SYNC METHODS ---
+
+// UPSERT TRENDING RECIPE
+export const upsertTrendingRecipeModel = async (trendingData) => {
+  // Delete existing record first to ensure no duplicates in the database
+  await supabase
+    .from("trending_recipes")
+    .delete()
+    .eq("recipe_id", trendingData.recipe_id);
+
+  const { data, error } = await supabase
+    .from("trending_recipes")
+    .insert([trendingData])
+    .select()
+    .single();
+
+  if (error) {
+    // Fallback if insert fails
+    const { data: upsertData, error: upsertError } = await supabase
+      .from("trending_recipes")
+      .upsert(trendingData, { onConflict: "recipe_id" })
+      .select()
+      .single();
+    if (upsertError) throw upsertError;
+    return upsertData;
+  }
+  return data;
+};
+
+// BULK UPSERT TRENDING RECIPES
+export const bulkUpsertTrendingRecipesModel = async (trendingDataArray) => {
+  if (!trendingDataArray || trendingDataArray.length === 0) return [];
+
+  // Delete existing records first to ensure no duplicates in the database
+  const recipeIds = trendingDataArray.map(t => t.recipe_id);
+  const batchSize = 100;
+  for (let i = 0; i < recipeIds.length; i += batchSize) {
+    const batchIds = recipeIds.slice(i, i + batchSize);
+    await supabase
+      .from("trending_recipes")
+      .delete()
+      .in("recipe_id", batchIds);
+  }
+
+  const { data, error } = await supabase
+    .from("trending_recipes")
+    .insert(trendingDataArray);
+
+  if (error) {
+    console.error("--- DEBUG INSERT ERROR:", error);
+    throw error;
+  }
+  return data;
+};
+
+// GET TRENDING DATA FROM TABLE
+export const getTrendingFromTableModel = async (limit = 100) => {
+  const { data, error } = await supabase
+    .from("trending_recipes")
+    .select(`
+      *,
+      recipes (
+        *,
+        sellers (full_name)
+      )
+    `)
+    .order("heat_score", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error('Error fetching from trending_recipes table:', error);
+    throw error;
+  }
+  return data;
+};
+
+// GET CHEF ID BY RECIPE ID
+export const getChefIdByRecipeIdModel = async (recipeId) => {
+  const { data, error } = await supabase
+    .from("chef_records")
+    .select("chef_id")
+    .eq("recipe_id", recipeId)
+    .single();
+
+  if (error) return null; // Handle missing chef record gracefully
+  return data?.chef_id;
+};
+
+// GET BUYER COUNT BY RECIPE ID
+export const getBuyerCountByRecipeIdModel = async (recipeId) => {
+  const { count, error } = await supabase
+    .from("buyers")
+    .select("*", { count: "exact", head: true })
+    .eq("recipe_id", recipeId);
+
+  if (error) throw error;
+  return count || 0;
+};
+
+export const getRecipesByChefIdModel = async (chefId) => {
+  const { data, error } = await supabase
+    .from('recipes')
+    .select('*, tags(tag_id, dietary_tags)')
+    .eq('chef_id', chefId);
+
+  if (error) throw error;
+  return data;
+};
+
+// FETCH ALL FEEDBACKS FOR AGGREGATION
+export const getAllFeedbacksModel = async () => {
+  const { data, error } = await supabase
+    .from("feedbacks")
+    .select("recipe_id, rating");
+  if (error) throw error;
+  return data;
+};
+
+// FETCH ALL PURCHASES FOR AGGREGATION
+export const getAllPurchasesModel = async () => {
+  const { data, error } = await supabase
+    .from("recipe_purchases")
+    .select("recipe_id, unlocked_at");
+  if (error) throw error;
+  return data;
 };

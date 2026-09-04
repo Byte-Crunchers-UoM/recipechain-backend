@@ -9,6 +9,8 @@ import {
   getMe,
   requestMyAccountDeletion,
   deleteMyAccountPermanently,
+  getChefProfile,
+  followUser,
 } from "../controllers/userController.js";
 
 import { validateUser } from "../middleware/inputValidators.js";
@@ -20,6 +22,8 @@ const router = express.Router();
 // Public / Standard user routes
 router.post("/user", validateUser, createUser);
 router.get("/user/:id", getUserById);
+router.get("/user/chef/:id", getChefProfile);
+router.post("/user/:id/follow", followUser);
 
 // Admin-only routes
 router.get("/users", protectAdmin, getAllUsers);

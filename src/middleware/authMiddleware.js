@@ -33,6 +33,12 @@ const verifySupabaseBearerToken = async (req) => {
     error,
   } = await supabase.auth.getUser(token);
 
+  // 👇 ADD THESE LINES
+console.log("Supabase getUser()");
+console.log("User:", user);
+console.log("Error:", error);
+
+
   if (error || !user) {
     const authError = new Error("Not authorized");
     authError.statusCode = 401;

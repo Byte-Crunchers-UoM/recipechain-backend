@@ -13,8 +13,10 @@ import {
   getMyCookbookRecipeForReview,
   upsertMyCookbookRecipeReview,
   toggleMyCookbookFavorite,
+  blockBuyer,
 } from "../controllers/buyerController.js";
 import { requireSession } from "../middleware/sessionMiddleware.js";
+import { protectAdmin } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -68,5 +70,6 @@ router.get("/", getAllBuyers);
 router.get("/:id", getBuyerById);
 router.put("/:id", updateBuyer);
 router.delete("/:id", deleteBuyer);
+router.patch("/:id/block", protectAdmin, blockBuyer);
 
 export default router;

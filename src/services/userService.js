@@ -14,6 +14,8 @@ import {
   setUserRoleByUserIdModel,
   requestAccountDeletionByUserIdModel,
   deleteMyBuyerAccountPermanentlyByUserIdModel,
+  getChefProfileModel,
+  incrementFollowersModel,
 } from "../models/userModel.js";
 
 class UserService {
@@ -406,6 +408,20 @@ class UserService {
     }
 
     return await deleteMyBuyerAccountPermanentlyByUserIdModel(userId);
+  }
+
+  async getChefProfile(id) {
+    if (!id) {
+      throw new Error('Chef ID is required');
+    }
+    return await getChefProfileModel(id);
+  }
+  
+  async incrementFollowers(id) {
+    if (!id) {
+      throw new Error('Chef ID is required');
+    }
+    return await incrementFollowersModel(id);
   }
 }
 

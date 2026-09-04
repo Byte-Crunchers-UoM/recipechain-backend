@@ -10,3 +10,4 @@ dist/
 build/
 .next/
 .vscode/
+/api_docs.md
