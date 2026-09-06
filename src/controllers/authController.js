@@ -10,6 +10,7 @@ import userService from "../services/userService.js";
  * @param {import("express").Request} req - Express request containing email and password.
  * @param {import("express").Response} res - Express response used to return login result.
  * @returns {Promise<void>}
+ * 
  */
 export const adminLogin = async (req, res) => {
   const { email, password } = req.body;
