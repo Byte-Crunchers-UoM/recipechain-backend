@@ -112,45 +112,45 @@ export const requireSession = (req, res, next) => {
  */
 /*export const optionalSession = (req, _res, next) => {
   try {*/
-    /**
-     * Optional session is useful for public routes that can behave differently
-     * when a user is logged in, without requiring login.
-     */
-    /*const token = req.cookies?.rc_session;
-    const secret = process.env.SESSION_SECRET;
+/**
+ * Optional session is useful for public routes that can behave differently
+ * when a user is logged in, without requiring login.
+ */
+/*const token = req.cookies?.rc_session;
+const secret = process.env.SESSION_SECRET;
 
-    if (!token || !secret) {
-      req.session = null;
-      req.user = null;
-      return next();
-    }*/
+if (!token || !secret) {
+  req.session = null;
+  req.user = null;
+  return next();
+}*/
 
-    /**
-     * If the cookie is valid, attach user details just like requireSession().
-     * If it is invalid, the catch block will continue as a guest user.
-     */
-    /*const decoded = jwt.verify(token, secret);
-    const sessionUser = normalizeSessionPayload(decoded);
+/**
+ * If the cookie is valid, attach user details just like requireSession().
+ * If it is invalid, the catch block will continue as a guest user.
+ */
+/*const decoded = jwt.verify(token, secret);
+const sessionUser = normalizeSessionPayload(decoded);
 
-    if (!sessionUser.user_id) {
-      req.session = null;
-      req.user = null;
-      return next();
-    }
+if (!sessionUser.user_id) {
+  req.session = null;
+  req.user = null;
+  return next();
+}
 
-    req.session = sessionUser;
-    req.user = sessionUser;
+req.session = sessionUser;
+req.user = sessionUser;
 
-    return next();
-  } catch {*/
-    /**
-     * Optional auth should never break public pages.
-     * Invalid sessions are ignored and the request continues as unauthenticated.
-     */
-    /*req.session = null;
-    req.user = null;
-    return next();
-  }
+return next();
+} catch {*/
+/**
+ * Optional auth should never break public pages.
+ * Invalid sessions are ignored and the request continues as unauthenticated.
+ */
+/*req.session = null;
+req.user = null;
+return next();
+}
 };*/
 
 /**
@@ -161,13 +161,13 @@ export const optionalSession = (req, _res, next) => {
   try {
     // 1. Try to get the token from the Authorization header first (Admin Dashboard)
     const authHeader = req.headers.authorization;
-    let token = authHeader && authHeader.startsWith('Bearer ') 
-        ? authHeader.split(' ')[1] 
-        : null;
+    let token = authHeader && authHeader.startsWith('Bearer ')
+      ? authHeader.split(' ')[1]
+      : null;
 
     // 2. If no header token exists, fall back to checking the cookie (Web3Auth)
     if (!token) {
-        token = req.cookies?.rc_session;
+      token = req.cookies?.rc_session;
     }
 
     const secret = process.env.SESSION_SECRET;
