@@ -1,61 +1,125 @@
-import dotenv from 'dotenv';
+// src/index.js
+
+import dotenv from "dotenv";
 dotenv.config();
 
-import express from 'express';
-import cors from 'cors';
-import { testConnection } from './config/supabase.js';
-import userRoutes from './routes/userRoutes.js';
-import errorHandler from './middleware/errorHandler.js';
+import express from "express";
+import cors from "cors";
+import { testConnection } from "./config/supabase.js";
+import userRoutes from "./routes/userRoutes.js";
+import buyerRoutes from "./routes/buyerRoutes.js";
+import sellerRoutes from "./routes/sellerRoutes.js";
+import recipeRoutes from "./routes/recipeRoutes.js";
+import followedChefsRoutes from "./routes/followedChefsRoutes.js";
+import errorHandler from "./middleware/errorHandler.js";
+import dashboardRoutes from "./routes/dashboardRoutes.js";
+import cookieParser from "cookie-parser";
+import savedRecipeRoutes from "./routes/savedRecipeRoutes.js";
+import authRoutes from "./routes/authRoutes.js";
+import walletRoutes from "./routes/walletRoutes.js";
+import stripeRoutes from "./routes/stripeRoutes.js";
+import aiRoutes from "./routes/aiRoutes.js";
+import adminReviewRoutes from "./routes/adminReviewRoutes.js";
+import { protectAdmin } from "./middleware/authMiddleware.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-app.use(cors());
-app.use(express.json());
+const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:3000")
+  .split(",")
+  .map((url) => url.trim().replace(/\/$/, ""));
 
-// Health check route
-app.get('/', (req, res) => {
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      const cleanOrigin = origin.replace(/\/$/, "");
+      if (
+        allowedOrigins.includes(cleanOrigin) ||
+        process.env.NODE_ENV !== "production" ||
+        cleanOrigin.endsWith(".vercel.app")
+      ) {
+        return callback(null, true);
+      }
+      return callback(new Error(`Origin ${origin} not allowed by CORS`));
+    },
+    credentials: true,
+  })
+);
+
+app.use(cookieParser());
+
+/**
+ * Stripe webhook route must come BEFORE express.json().
+ * This is important because Stripe webhook signature verification usually
+ * requires the raw request body.
+ */
+app.use("/api/stripe", stripeRoutes);
+
+// Normal body parsers for the rest of the app
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Health check
+app.get("/", (req, res) => {
   res.json({
-    message: 'RecipeChain API',
-    version: '1.0.0',
-    status: 'running'
+    message: "RecipeChain API",
+    version: "1.0.0",
+    status: "running",
   });
 });
 
-// Test Supabase connection
-app.get('/test-db', async (req, res) => {
+// Test DB
+app.get("/test-db", async (req, res) => {
   try {
-    const isConnected = await testConnection();
+    const ok = await testConnection();
 
-    if (isConnected) {
-      res.json({
-        success: true,
-        message: 'Supabase connection is healthy',
-        timestamp: new Date().toISOString()
-      });
-    } else {
-      throw new Error('Connection test failed');
-    }
+    res.json({
+      success: ok,
+      message: ok ? "Supabase OK" : "Supabase failed",
+    });
   } catch (err) {
-    console.error(err);
     res.status(500).json({
       success: false,
-      message: 'Error connecting to Supabase',
-      error: err.message
+      message: err.message,
     });
   }
 });
 
 // API routes
-app.use('/api', userRoutes);
+app.use("/api", userRoutes);
+app.use("/api/recipes", recipeRoutes);
+app.use("/api/chefs", followedChefsRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/buyers", buyerRoutes);
+app.use("/api/sellers", sellerRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/savedrecipes", savedRecipeRoutes);
+app.use("/api/wallet", walletRoutes);
+app.use("/api/ai", aiRoutes);
+app.use("/api/admin/reviews", protectAdmin, adminReviewRoutes);
 
-// Error handler (must be after all routes)
+// Error handler
 app.use(errorHandler);
 
-// Test Supabase connection on startup
-testConnection();
+// Start server only after checking Supabase connection
+const startServer = async () => {
+  try {
+    await testConnection();
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+    const environment = process.env.NODE_ENV || "development";
+
+    if (environment.trim() !== "test") {
+      app.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT} successfully`);
+      });
+    }
+  } catch (err) {
+    console.error("Failed to start server:", err);
+    process.exit(1);
+  }
+};
+
+startServer();
+
+export default app;

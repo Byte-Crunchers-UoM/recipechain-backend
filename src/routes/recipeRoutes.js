@@ -1,0 +1,74 @@
+//src/routes/recipeRoute.js
+
+import express from 'express';
+import {
+    getAllRecipes,
+    addRecipe,
+    getRecipeById,
+    updateRecipe,
+    deleteRecipe,
+    getFilteredRecipes,
+    searchRecipes,
+    unlockRecipe,
+    verifyRecipe,
+    getCheckoutQuote,
+    unlockRecipesBatch,
+    getAdminAllRecipes,
+    getTrendingRecipes,
+    getRecipesByChef
+} from '../controllers/recipeController.js';
+
+import { requireSession, optionalSession } from '../middleware/sessionMiddleware.js';
+
+import { validateRecipe } from '../middleware/inputValidators.js';
+
+const router = express.Router();
+
+// CREATE
+router.post('/', validateRecipe, addRecipe);
+
+// READ
+
+
+// UPDATE
+router.put('/:id', updateRecipe);
+
+// DELETE
+router.delete('/:id', deleteRecipe);
+// --- 1. STATIC ROUTES (These should be first) ---
+
+// Search (Use optionalSession so the Purchased badge is visible in the search as well)
+router.get('/search', optionalSession, searchRecipes);
+
+// Filter (Use optionalSession)
+router.get("/filter", optionalSession, getFilteredRecipes);
+
+// Trending (must be before /:id)
+router.get('/trending', getTrendingRecipes);
+
+// Recipes by chef (must be before /:id)
+router.get('/chef/:id', getRecipesByChef);
+
+router.post('/checkout-quote', optionalSession, getCheckoutQuote);
+router.post('/unlock-batch', requireSession, unlockRecipesBatch); 
+
+// Unlock Recipe (A Session is strictly required for payments)
+router.post('/unlock', requireSession, unlockRecipe);
+
+
+// --- 2. DYNAMIC ROUTES (Routes using an ID should come after static ones) ---
+
+// Admin: must be before /:id so "admin" is not treated as a recipe ID
+router.get('/admin/all', getAdminAllRecipes);
+
+// Approve / Reject a recipe (admin action)
+router.patch('/:id/verify', verifyRecipe);
+
+// READ BY ID
+// Since optionalSession is here, it will unlock the recipe for logged-in users
+router.get('/:id', optionalSession, getRecipeById);
+
+// GET ALL RECIPES
+router.get("/", optionalSession, getAllRecipes);
+
+export default router;
